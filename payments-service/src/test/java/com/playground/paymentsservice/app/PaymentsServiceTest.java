@@ -15,6 +15,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PaymentsServiceTest {
     @Test
+    void shouldApplyConfiguredArtificialDelay() {
+        PaymentsService service = new PaymentsService(new PaymentFailureSimulationProperties(25L, 0, 0.0, false, false, false), new SimpleMeterRegistry());
+
+        long start = System.nanoTime();
+        service.authorize(new PaymentAuthorizationRequest("order-delay", BigDecimal.ONE, "USD"));
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+
+        assertThat(elapsedMs).isGreaterThanOrEqualTo(20L);
+    }
+
+    @Test
     void shouldAuthorizeWhenNoFailureModesAreEnabled() {
         PaymentsService service = new PaymentsService(new PaymentFailureSimulationProperties(0L, 0, 0.0, false, false, false), new SimpleMeterRegistry());
 
