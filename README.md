@@ -27,6 +27,25 @@ The playground is expected to support the following:
 
 The system should remain intentionally simple from a business perspective while being strong from an observability and failure-analysis perspective.
 
+
+## Engineering rules
+
+The following repository rules are mandatory for all services and scenarios:
+
+1. Java 21 and Spring Boot 3.x only.
+2. Constructor injection only; no field injection.
+3. All `RestTemplate` clients must set explicit connection and read timeouts.
+4. Use centralized exception handling for API error responses.
+5. Validate all external request payloads.
+6. Service URLs must come from configuration (`application.yml` / env vars), never hardcoded in Java code.
+7. Never commit secrets.
+8. `docker compose up -d` must work locally for shared infrastructure.
+9. `README` and scenario docs must match actual runtime behavior.
+10. Keep implementations simple and understandable over clever abstractions.
+11. Every failure scenario must be deterministic or explicitly configurable.
+12. Logs must be structured and machine-parseable, not only human-readable.
+13. Never swallow exceptions; always log structured evidence before propagating/handling failures.
+
 ## High-level architecture
 
 Client traffic enters through `api-gateway`, then fans out to domain services. The domain flow is centered around order processing:
