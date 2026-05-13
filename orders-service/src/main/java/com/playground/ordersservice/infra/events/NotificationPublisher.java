@@ -16,11 +16,19 @@ public class NotificationPublisher {
         this.failures = failures;
     }
 
-    public void publishNotificationRequested(String orderId, String customerId) {
+    public void publishNotificationRequested(String orderId, String customerId, String correlationId, String traceId, String traceparent) {
         if (failures.isPublishNotificationFailure()) {
             throw new IllegalStateException("Simulated notification publish failure");
         }
         log.info("operation=pubsub_event_published event_id=notification_requested topic=notification-topic order_id={} payload={}",
-                orderId, Map.of("type", "NotificationRequestedEvent", "orderId", orderId, "customerId", customerId));
+                orderId,
+                Map.of(
+                        "type", "NotificationRequestedEvent",
+                        "orderId", orderId,
+                        "customerId", customerId,
+                        "correlation_id", correlationId,
+                        "trace_id", traceId,
+                        "traceparent", traceparent
+                ));
     }
 }

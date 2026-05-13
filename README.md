@@ -148,6 +148,20 @@ Use scripts from `scripts/` (to be expanded per scenario) and scenario playbooks
 3. In Grafana Explore, query logs in Loki for that `traceId`.
 4. Pivot to Tempo trace view to inspect spans and error boundaries.
 
+## Trace and correlation propagation status
+
+- **HTTP**
+  - `traceparent` is propagated by Spring/Micrometer instrumentation on normal flows.
+  - `X-Correlation-Id` is preserved from gateway to downstream services when supplied.
+  - Scenario `S007` can intentionally break trace propagation on `orders-service -> payments-service`.
+- **Kafka**
+  - `orders-service` includes `correlation_id` and `trace_id` in the event payload.
+  - `orders-service` also includes `correlation_id` and `traceparent` in Kafka headers.
+  - Current consumers primarily rely on payload fields; header-based trace continuation is logged but not fully rehydrated into a consumer span context.
+- **Pub/Sub-like flow (`notification-service` in-memory adapter)**
+  - Correlation and trace fields are included in emitted notification payload logs.
+  - Because the adapter is in-memory and not a real broker client, distributed trace context is not automatically continued as broker spans end-to-end.
+
 ## Expected outputs from each scenario
 
 Every scenario should produce all of the following:

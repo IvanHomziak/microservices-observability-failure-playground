@@ -14,8 +14,10 @@ import io.micrometer.tracing.Tracer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.messaging.support.MessageBuilder;
 
 import java.time.Instant;
 import java.util.Map;
@@ -49,8 +51,10 @@ public class OrderService {
         this.tracer = tracer;
     }
 
-    public OrderResponse create(OrderRequest request) {
-        String correlationId = UUID.randomUUID().toString();
+    public OrderResponse create(OrderRequest request, String incomingCorrelationId) {
+        String correlationId = (incomingCorrelationId == null || incomingCorrelationId.isBlank())
+                ? UUID.randomUUID().toString()
+                : incomingCorrelationId;
         MDC.put("correlationId", correlationId);
         MDC.put("correlation_id", correlationId);
         try {
@@ -80,11 +84,25 @@ public class OrderService {
             if (failures.isPublishKafkaFailure()) {
                 throw new IllegalStateException("Simulated kafka publish failure");
             }
-            kafkaTemplate.send("order-events", Map.of("type", "OrderCreatedEvent", "orderId", orderId,
-                    "customerId", request.customerId(), "amount", request.amount(), "currency", request.currency()));
+            String traceId = currentTraceId();
+            String traceparent = currentTraceparent();
+            Map<String, Object> eventPayload = Map.of(
+                    "type", "OrderCreatedEvent",
+                    "orderId", orderId,
+                    "customerId", request.customerId(),
+                    "amount", request.amount(),
+                    "currency", request.currency(),
+                    "correlation_id", correlationId,
+                    "trace_id", traceId
+            );
+            kafkaTemplate.send(MessageBuilder.withPayload(eventPayload)
+                    .setHeader(KafkaHeaders.TOPIC, "order-events")
+                    .setHeader("correlation_id", correlationId)
+                    .setHeader("traceparent", traceparent)
+                    .build());
             log.info("operation=kafka_event_published event_id=order_created_event topic=order-events order_id={}", orderId);
 
-            notificationPublisher.publishNotificationRequested(orderId, request.customerId());
+            notificationPublisher.publishNotificationRequested(orderId, request.customerId(), correlationId, traceId, traceparent);
             ordersCreatedCounter.increment();
             log.info("operation=order_processed event_id=order_processed order_id={} status={}", orderId, order.getStatus().name());
 
@@ -97,5 +115,14 @@ public class OrderService {
 
     private String currentTraceId() {
         return tracer.currentSpan() != null ? tracer.currentSpan().context().traceId() : "";
+    }
+
+    private String currentTraceparent() {
+        if (tracer.currentSpan() == null) {
+            return "";
+        }
+        String traceId = tracer.currentSpan().context().traceId();
+        String spanId = tracer.currentSpan().context().spanId();
+        return "00-" + traceId + "-" + spanId + "-01";
     }
 }
