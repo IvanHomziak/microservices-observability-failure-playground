@@ -1,10 +1,11 @@
 # Failure Scenarios
 
-This folder contains deterministic incident playbooks for the microservices observability failure playground.
+## First-pass status
 
-## Scenario files
-
+### Fully implemented
 - `S001-resttemplate-timeout.md`
+
+### Placeholder documentation (not fully implemented)
 - `S002-payments-http-500.md`
 - `S003-db-slow-query.md`
 - `S004-kafka-poison-message.md`
@@ -13,23 +14,4 @@ This folder contains deterministic incident playbooks for the microservices obse
 - `S007-broken-trace-propagation.md`
 - `S008-missing-correlation-id.md`
 
-## Required section contract (per scenario)
-
-Each scenario file includes:
-
-- Scenario ID
-- Description
-- Services involved
-- How to enable the scenario
-- How to trigger it
-- Expected logs
-- Expected traces
-- Expected metrics
-- Expected root cause
-- What the AI diagnostics agent should conclude
-- Known limitations
-
-## Implementation status
-
-- **Fully implemented in this iteration:** `S001-resttemplate-timeout`
-- **Documentation + placeholders:** `S002` through `S008`
+This pass prioritizes a working S001 end-to-end scenario over a broad but unstable stack.
