@@ -52,7 +52,7 @@ public class InventoryEventHandler {
         String scenario = asString(event.get("failureScenario"));
 
         withContext(correlationId, traceId);
-        log.info("Inventory event received topic={} partition={} offset={} key={} eventId={} orderId={} correlation_id={} trace_id={}",
+        log.info("operation=kafka_event_consumed topic={} partition={} offset={} key={} event_id={} order_id={} correlation_id={} trace_id={}",
                 topic, partition, offset, key, eventId, orderId, correlationId, traceId);
 
         try {
@@ -62,14 +62,14 @@ public class InventoryEventHandler {
 
             if (eventId != null && !processedEventIds.add(eventId)) {
                 duplicateEventCounter.increment();
-                log.warn("Duplicate event detected topic={} partition={} offset={} key={} eventId={} orderId={}",
+                log.warn("operation=kafka_processing_failed event_id=duplicate_event topic={} partition={} offset={} key={} event_id={} order_id={}",
                         topic, partition, offset, key, eventId, orderId);
                 return;
             }
 
             if (orderId != null && !reservedOrderIds.add(orderId)) {
                 idempotencyConflictCounter.increment();
-                log.warn("Idempotency conflict: order already reserved topic={} partition={} offset={} key={} eventId={} orderId={}",
+                log.warn("operation=kafka_processing_failed event_id=idempotency_conflict topic={} partition={} offset={} key={} event_id={} order_id={}",
                         topic, partition, offset, key, eventId, orderId);
                 return;
             }
@@ -88,7 +88,7 @@ public class InventoryEventHandler {
             }
 
             reservationSuccessCounter.increment();
-            log.info("Inventory reserved for order topic={} partition={} offset={} key={} eventId={} orderId={}",
+            log.info("operation=order_persisted event_id=inventory_reserved topic={} partition={} offset={} key={} event_id={} order_id={}",
                     topic, partition, offset, key, eventId, orderId);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

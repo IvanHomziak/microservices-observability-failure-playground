@@ -49,12 +49,13 @@ public class CorrelationIdLoggingFilter extends OncePerRequestFilter {
             String spanId = currentSpan != null ? currentSpan.context().spanId() : "";
 
             log.info(
-                    "inbound method={} path={} status={} duration_ms={} correlation_id={} trace_id={} span_id={}",
+                    "operation=inbound_http_request method={} path={} status={} duration_ms={} correlation_id={} request_id={} trace_id={} span_id={}",
                     request.getMethod(),
                     request.getRequestURI(),
                     response.getStatus(),
                     durationMs,
                     correlationId,
+                    request.getHeader("X-Request-Id"),
                     traceId,
                     spanId
             );

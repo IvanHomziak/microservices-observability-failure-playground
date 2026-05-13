@@ -26,6 +26,7 @@ public class PaymentClient {
     }
 
     public boolean authorize(String orderId, BigDecimal amount, String currency) {
+        log.info("operation=payment_authorization_started event_id=payment_authorization_started order_id={} amount={} currency={}", orderId, amount, currency);
         if (failures.isPaymentTimeout()) {
             throw new PaymentGatewayException("PAYMENT_TIMEOUT", "Simulated payment timeout");
         }
@@ -50,9 +51,16 @@ public class PaymentClient {
                 throw new PaymentGatewayException("PAYMENT_INVALID_RESPONSE", "Payment service returned invalid response");
             }
 
-            return Boolean.TRUE.equals(body.get("approved"));
+            boolean approved = Boolean.TRUE.equals(body.get("approved"));
+            if (approved) {
+                log.info("operation=payment_authorization_succeeded event_id=payment_authorization_succeeded order_id={}", orderId);
+            } else {
+                log.warn("operation=payment_authorization_failed event_id=payment_authorization_declined order_id={}", orderId);
+            }
+            return approved;
         } catch (ResourceAccessException e) {
-            log.error("event=payments_authorization_timeout orderId={} message={}", orderId, e.getMessage(), e);
+            log.error("operation=resttemplate_timeout event_id=payments_authorization_timeout order_id={} exception_type={} exception_message={}",
+                    orderId, e.getClass().getSimpleName(), e.getMessage(), e);
             throw new PaymentGatewayException("PAYMENT_TIMEOUT", "Timeout while calling payment service", e);
         } catch (RestClientResponseException e) {
             if (e.getStatusCode().is5xxServerError()) {
