@@ -1,6 +1,8 @@
 package com.playground.ordersservice.infra.http;
 
 import com.playground.ordersservice.infra.config.FailureScenariosProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +16,7 @@ import java.util.Map;
 
 @Component
 public class PaymentClient {
+    private static final Logger log = LoggerFactory.getLogger(PaymentClient.class);
     private final RestTemplate restTemplate;
     private final FailureScenariosProperties failures;
 
@@ -49,6 +52,7 @@ public class PaymentClient {
 
             return Boolean.TRUE.equals(body.get("approved"));
         } catch (ResourceAccessException e) {
+            log.error("event=payments_authorization_timeout orderId={} message={}", orderId, e.getMessage(), e);
             throw new PaymentGatewayException("PAYMENT_TIMEOUT", "Timeout while calling payment service", e);
         } catch (RestClientResponseException e) {
             if (e.getStatusCode().is5xxServerError()) {

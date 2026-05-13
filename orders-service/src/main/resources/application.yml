@@ -25,6 +25,10 @@ logging:
     level: "%5p [traceId:%X{traceId:-}] [spanId:%X{spanId:-}] [correlationId:%X{correlationId:-}]"
 
 orders:
+  rest-clients:
+    payments:
+      connect-timeout-ms: 500
+      read-timeout-ms: 1000
   failures:
     payment-timeout: false
     payment-connection-failure: false
