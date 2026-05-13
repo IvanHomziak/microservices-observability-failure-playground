@@ -35,3 +35,4 @@ orders:
     payment-invalid-response: false
     publish-kafka-failure: false
     publish-notification-failure: false
+    tracing-break-propagation-to-payments: false

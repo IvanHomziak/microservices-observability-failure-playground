@@ -30,3 +30,9 @@ app:
     retry:
       max-attempts: 3
       interval-ms: 1000
+
+
+failure-simulation:
+  kafka:
+    poison-message-enabled: false
+    processing-delay-ms: 0
