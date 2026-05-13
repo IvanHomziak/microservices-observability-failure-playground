@@ -47,19 +47,63 @@ microservices-observability-failure-playground/
   audit-service/               # skeleton
 ```
 
-## Run (first pass)
+## Implementation summary (requested)
 
-### 1) Start infrastructure + services
+### 1) Summary of what was created
+- End-to-end HTTP flow across `api-gateway -> orders-service -> payments-service`.
+- `orders-service` persistence with PostgreSQL and order status updates.
+- Failure simulation for **S001** where downstream payment response delay exceeds client timeout.
+- Local helper scripts for startup, shutdown, success flow, S001 trigger, and log inspection.
+- Initial scenario docs and architecture notes to support observability/failure drills.
+
+### 2) How to run locally
+Option A (recommended):
+```bash
+./scripts/run-local.sh
+```
+
+Option B (equivalent manual command):
 ```bash
 docker compose up -d --build
 ```
 
-### 2) Verify actuator health
+Health checks:
 ```bash
 curl http://localhost:8080/actuator/health
 curl http://localhost:8081/actuator/health
 curl http://localhost:8082/actuator/health
 ```
+
+Stop:
+```bash
+./scripts/stop-local.sh
+```
+
+### 3) How to trigger successful request
+```bash
+./scripts/trigger-successful-order.sh
+```
+
+### 4) How to trigger S001 RestTemplate timeout
+```bash
+./scripts/trigger-s001-resttemplate-timeout.sh
+```
+
+Expected behavior: request fails from `orders-service` perspective due to `RestTemplate` read timeout while `payments-service` intentionally delays.
+
+### 5) Known limitations
+- Only S001 is fully implemented end-to-end in this first pass.
+- Kafka/PubSub and most asynchronous workflows are placeholders.
+- Full observability stack assets exist but are not positioned as production-ready.
+- Failure scenarios `S002`–`S008` are partially or fully deferred.
+- Current setup is local-development focused (no hardening/production concerns yet).
+
+### 6) Next recommended task
+Implement **S002 payments HTTP 500** end-to-end with:
+- deterministic failure toggle in `payments-service`,
+- explicit error mapping and status propagation in `orders-service`,
+- scenario-specific assertions/tests,
+- docs + script parity matching S001 ergonomics.
 
 ## Scenarios in this pass
 
