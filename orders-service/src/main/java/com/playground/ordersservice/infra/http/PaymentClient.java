@@ -3,6 +3,8 @@ package com.playground.ordersservice.infra.http;
 import com.playground.ordersservice.infra.config.FailureScenariosProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -19,10 +21,17 @@ public class PaymentClient {
     private static final Logger log = LoggerFactory.getLogger(PaymentClient.class);
     private final RestTemplate restTemplate;
     private final FailureScenariosProperties failures;
+    private final String serviceName;
+    private final String environment;
 
-    public PaymentClient(RestTemplate restTemplate, FailureScenariosProperties failures) {
+    public PaymentClient(RestTemplate restTemplate,
+                         FailureScenariosProperties failures,
+                         @Value("${spring.application.name:orders-service}") String serviceName,
+                         @Value("${app.environment:local}") String environment) {
         this.restTemplate = restTemplate;
         this.failures = failures;
+        this.serviceName = serviceName;
+        this.environment = environment;
     }
 
     public boolean authorize(String orderId, BigDecimal amount, String currency) {
@@ -34,6 +43,8 @@ public class PaymentClient {
         }
 
         try {
+            log.info("event_id=payment-authorization-started operation=payment_authorization_started service={} environment={} correlation_id={} order_id={}",
+                    serviceName, environment, MDC.get("correlationId"), orderId);
             ResponseEntity<Map> response = restTemplate.postForEntity(
                     "http://localhost:8082/payments/authorize",
                     new HttpEntity<>(Map.of("orderId", orderId, "amount", amount, "currency", currency)),
@@ -52,7 +63,8 @@ public class PaymentClient {
 
             return Boolean.TRUE.equals(body.get("approved"));
         } catch (ResourceAccessException e) {
-            log.error("event=payments_authorization_timeout orderId={} message={}", orderId, e.getMessage(), e);
+            log.error("event_id=resttemplate-timeout operation=outbound_http_request service={} environment={} correlation_id={} order_id={} exception_type={} exception_message={}",
+                    serviceName, environment, MDC.get("correlationId"), orderId, e.getClass().getSimpleName(), e.getMessage(), e);
             throw new PaymentGatewayException("PAYMENT_TIMEOUT", "Timeout while calling payment service", e);
         } catch (RestClientResponseException e) {
             if (e.getStatusCode().is5xxServerError()) {

@@ -5,6 +5,7 @@ import io.micrometer.tracing.Tracer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
@@ -19,9 +20,15 @@ public class CorrelationIdRestTemplateInterceptor implements ClientHttpRequestIn
 
     private static final Logger log = LoggerFactory.getLogger(CorrelationIdRestTemplateInterceptor.class);
     private final Tracer tracer;
+    private final String serviceName;
+    private final String environment;
 
-    public CorrelationIdRestTemplateInterceptor(Tracer tracer) {
+    public CorrelationIdRestTemplateInterceptor(Tracer tracer,
+                                                @Value("${spring.application.name:api-gateway}") String serviceName,
+                                                @Value("${app.environment:local}") String environment) {
         this.tracer = tracer;
+        this.serviceName = serviceName;
+        this.environment = environment;
     }
 
     @Override
@@ -41,14 +48,17 @@ public class CorrelationIdRestTemplateInterceptor implements ClientHttpRequestIn
         String spanId = currentSpan != null ? currentSpan.context().spanId() : "";
 
         log.info(
-                "outbound method={} path={} status={} duration_ms={} correlation_id={} trace_id={} span_id={}",
+                "event_id=outbound-http-request operation=outbound_http_request service={} environment={} method={} path={} status={} duration_ms={} correlation_id={} trace_id={} span_id={} request_id={}",
+                serviceName,
+                environment,
                 request.getMethod(),
                 request.getURI().getPath(),
                 response.getStatusCode().value(),
                 durationMs,
                 correlationId,
                 traceId,
-                spanId
+                spanId,
+                correlationId
         );
         return response;
     }

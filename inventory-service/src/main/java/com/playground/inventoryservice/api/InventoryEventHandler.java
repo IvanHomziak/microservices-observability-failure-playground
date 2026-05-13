@@ -5,6 +5,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
@@ -18,6 +19,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class InventoryEventHandler {
 
     private static final Logger log = LoggerFactory.getLogger(InventoryEventHandler.class);
+    private final String serviceName;
+    private final String environment;
 
     private final Counter reservationAttemptCounter;
     private final Counter reservationSuccessCounter;
@@ -26,11 +29,15 @@ public class InventoryEventHandler {
     private final Set<String> processedEventIds = ConcurrentHashMap.newKeySet();
     private final Set<String> reservedOrderIds = ConcurrentHashMap.newKeySet();
 
-    public InventoryEventHandler(MeterRegistry meterRegistry) {
+    public InventoryEventHandler(MeterRegistry meterRegistry,
+                                 @Value("${spring.application.name:inventory-service}") String serviceName,
+                                 @Value("${app.environment:local}") String environment) {
         this.reservationAttemptCounter = meterRegistry.counter("inventory.reservation.attempts");
         this.reservationSuccessCounter = meterRegistry.counter("inventory.reservation.success");
         this.duplicateEventCounter = meterRegistry.counter("inventory.events.duplicates");
         this.idempotencyConflictCounter = meterRegistry.counter("inventory.events.idempotency_conflict");
+        this.serviceName = serviceName;
+        this.environment = environment;
     }
 
     @KafkaListener(topics = "${app.kafka.topics.order-created}", groupId = "${spring.kafka.consumer.group-id}")
@@ -50,8 +57,8 @@ public class InventoryEventHandler {
         String scenario = asString(event.get("failureScenario"));
 
         withContext(correlationId, traceId);
-        log.info("Inventory event received topic={} partition={} offset={} key={} eventId={} orderId={} correlation_id={} trace_id={}",
-                topic, partition, offset, key, eventId, orderId, correlationId, traceId);
+        log.info("event_id=kafka-event-consumed operation=kafka_event_consumed service={} environment={} topic={} partition={} offset={} key={} event_id={} order_id={} correlation_id={} trace_id={}",
+                serviceName, environment, topic, partition, offset, key, eventId, orderId, correlationId, traceId);
 
         try {
             if ("deserialization-error".equalsIgnoreCase(scenario)) {
@@ -60,15 +67,15 @@ public class InventoryEventHandler {
 
             if (eventId != null && !processedEventIds.add(eventId)) {
                 duplicateEventCounter.increment();
-                log.warn("Duplicate event detected topic={} partition={} offset={} key={} eventId={} orderId={}",
-                        topic, partition, offset, key, eventId, orderId);
+                log.warn("event_id=kafka-processing-failed operation=kafka_processing_failed service={} environment={} topic={} partition={} offset={} key={} event_id={} order_id={} exception_type={} exception_message={}",
+                        serviceName, environment, topic, partition, offset, key, eventId, orderId, "DuplicateEvent", "Duplicate event detected");
                 return;
             }
 
             if (orderId != null && !reservedOrderIds.add(orderId)) {
                 idempotencyConflictCounter.increment();
-                log.warn("Idempotency conflict: order already reserved topic={} partition={} offset={} key={} eventId={} orderId={}",
-                        topic, partition, offset, key, eventId, orderId);
+                log.warn("event_id=kafka-processing-failed operation=kafka_processing_failed service={} environment={} topic={} partition={} offset={} key={} event_id={} order_id={} exception_type={} exception_message={}",
+                        serviceName, environment, topic, partition, offset, key, eventId, orderId, "IdempotencyConflict", "Order already reserved");
                 return;
             }
 
@@ -85,8 +92,8 @@ public class InventoryEventHandler {
             }
 
             reservationSuccessCounter.increment();
-            log.info("Inventory reserved for order topic={} partition={} offset={} key={} eventId={} orderId={}",
-                    topic, partition, offset, key, eventId, orderId);
+            log.info("event_id=order-persisted operation=order_persisted service={} environment={} topic={} partition={} offset={} key={} event_id={} order_id={}",
+                    serviceName, environment, topic, partition, offset, key, eventId, orderId);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Interrupted while simulating processing delay", e);
