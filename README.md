@@ -12,6 +12,21 @@ The goal is to provide a repeatable environment where you can:
 - practice root-cause analysis,
 - evaluate how well an AI diagnostics agent can reason over telemetry.
 
+## Functional and observability goals
+
+The playground is expected to support the following:
+
+1. Generate both successful and failing end-to-end requests.
+2. Propagate trace IDs across HTTP, Kafka, and Pub/Sub-like flows where possible.
+3. Emit structured logs with `service_name`, `trace_id`, `span_id`, `correlation_id`, `request_id`, and domain IDs.
+4. Expose metrics via Spring Boot Actuator and Micrometer.
+5. Produce distributed traces through OpenTelemetry.
+6. Provide deterministic failure toggles.
+7. Provide documented scenarios with expected root causes.
+8. Allow an external AI diagnostics agent to query telemetry and return an evidence-based diagnostic report.
+
+The system should remain intentionally simple from a business perspective while being strong from an observability and failure-analysis perspective.
+
 ## High-level architecture
 
 Client traffic enters through `api-gateway`, then fans out to domain services. The domain flow is centered around order processing:
