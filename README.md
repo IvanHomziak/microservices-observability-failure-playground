@@ -157,7 +157,8 @@ curl http://localhost:8081/actuator/health
 Use scripts from `scripts/` (to be expanded per scenario) and scenario playbooks in `scenarios/`:
 
 ```bash
-./scripts/trigger-payment-timeout.sh
+./scripts/trigger-successful-order.sh
+./scripts/trigger-s001-resttemplate-timeout.sh
 ```
 
 ## How to find trace IDs
@@ -190,3 +191,12 @@ Every scenario should produce all of the following:
 - **Validation signal**: a trace-level and/or metric-level condition that confirms the diagnosis.
 
 This makes the playground suitable for both training and benchmarking operational diagnostics.
+
+
+## TODO (first pass gaps)
+
+If you cannot complete all items in one pass, track the remaining work here explicitly instead of skipping it silently.
+
+- [ ] Capture and document a full local evidence bundle for S001 (request/response, logs, and trace screenshots) in a reproducible script runbook.
+- [ ] Add an automated smoke test that boots gateway + orders + payments and validates both successful order creation and S001 timeout behavior end-to-end.
+- [ ] Add CI wiring for Docker Compose-based infrastructure checks so `docker compose up` health gates are validated automatically.
