@@ -22,6 +22,12 @@
 docker compose up -d --build
 ```
 
+## Deterministic Milestone 1 verification
+```bash
+./scripts/verify-milestone-1.sh
+```
+This runs the full local Milestone 1 contract verification (stack startup, health checks, SUCCESS flow assertions, and S001 timeout assertions) without requiring Kafka, Pub/Sub, or the observability stack.
+
 ## Health checks
 ```bash
 curl http://localhost:8080/actuator/health
