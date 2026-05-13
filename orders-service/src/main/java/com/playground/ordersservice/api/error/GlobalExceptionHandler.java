@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.slf4j.MDC;
 
 import java.time.Instant;
 
@@ -14,7 +15,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex) {
-        return ResponseEntity.badRequest().body(new ApiError("VALIDATION_ERROR", "Invalid order request", Instant.now()));
+        return ResponseEntity.badRequest().body(new ApiError("VALIDATION_ERROR", "Invalid order request", correlationId(), Instant.now()));
     }
 
     @ExceptionHandler(PaymentGatewayException.class)
@@ -26,12 +27,16 @@ public class GlobalExceptionHandler {
             case "PAYMENT_INVALID_RESPONSE" -> HttpStatus.BAD_GATEWAY;
             default -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
-        return ResponseEntity.status(status).body(new ApiError(ex.getCode(), ex.getMessage(), Instant.now()));
+        return ResponseEntity.status(status).body(new ApiError(ex.getCode(), ex.getMessage(), correlationId(), Instant.now()));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGeneric(Exception ex) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ApiError("INTERNAL_ERROR", ex.getMessage(), Instant.now()));
+                .body(new ApiError("INTERNAL_ERROR", ex.getMessage(), correlationId(), Instant.now()));
+    }
+
+    private String correlationId() {
+        return MDC.get("correlationId");
     }
 }
