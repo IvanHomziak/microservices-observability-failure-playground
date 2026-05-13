@@ -63,3 +63,10 @@ Implements a real synchronous downstream timeout on the `orders-service -> payme
 
 ## Known limitations
 - Timeout depends on local runtime and scheduler precision; observed failure timing may vary slightly around the configured read timeout.
+
+
+## TODO (first pass gaps)
+
+- [ ] Attach a sample `docker compose logs` snippet that includes the same `correlationId` across `api-gateway`, `orders-service`, and `payments-service`.
+- [ ] Attach a sample trace screenshot (Tempo) showing the failing `orders-service -> payments-service` client span timing out.
+- [ ] Add a deterministic automated scenario check (script or test) that asserts the expected 504 response contract and timeout error code.
