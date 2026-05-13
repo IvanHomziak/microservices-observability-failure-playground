@@ -3,9 +3,30 @@ spring:
     name: inventory-service
   kafka:
     bootstrap-servers: localhost:9092
+    consumer:
+      group-id: inventory-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.value.default.type: java.util.Map
+        spring.json.trusted.packages: "*"
+    listener:
+      ack-mode: record
+      type: single
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info,prometheus
+
+app:
+  kafka:
+    topics:
+      order-created: order-created
+      order-created-dlq: order-created-dlq
+    retry:
+      max-attempts: 3
+      interval-ms: 1000
