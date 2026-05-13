@@ -1,15 +1,23 @@
 package com.playground.ordersservice.api;
 
 import com.playground.ordersservice.app.OrderService;
-import com.playground.ordersservice.domain.OrderEntity;
-import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/orders")
 public class OrderController {
     private final OrderService service;
-    public OrderController(OrderService service) { this.service = service; }
+
+    public OrderController(OrderService service) {
+        this.service = service;
+    }
 
     @PostMapping
-    public OrderEntity create(@RequestBody OrderRequest request) { return service.create(request); }
+    public OrderResponse create(@Valid @RequestBody OrderRequest request) {
+        return service.create(request);
+    }
 }
