@@ -41,12 +41,13 @@ public class CorrelationIdRestTemplateInterceptor implements ClientHttpRequestIn
         String spanId = currentSpan != null ? currentSpan.context().spanId() : "";
 
         log.info(
-                "outbound method={} path={} status={} duration_ms={} correlation_id={} trace_id={} span_id={}",
+                "operation=outbound_http_request method={} path={} status={} duration_ms={} correlation_id={} request_id={} trace_id={} span_id={}",
                 request.getMethod(),
                 request.getURI().getPath(),
                 response.getStatusCode().value(),
                 durationMs,
                 correlationId,
+                request.getHeaders().getFirst("X-Request-Id"),
                 traceId,
                 spanId
         );

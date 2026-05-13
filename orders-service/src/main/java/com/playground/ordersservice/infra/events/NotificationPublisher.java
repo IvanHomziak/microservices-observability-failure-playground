@@ -20,7 +20,7 @@ public class NotificationPublisher {
         if (failures.isPublishNotificationFailure()) {
             throw new IllegalStateException("Simulated notification publish failure");
         }
-        log.info("event=notification_requested topic=notification-topic payload={} ",
-                Map.of("type", "NotificationRequestedEvent", "orderId", orderId, "customerId", customerId));
+        log.info("operation=pubsub_event_published event_id=notification_requested topic=notification-topic order_id={} payload={}",
+                orderId, Map.of("type", "NotificationRequestedEvent", "orderId", orderId, "customerId", customerId));
     }
 }

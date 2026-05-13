@@ -52,6 +52,7 @@ public class OrderService {
     public OrderResponse create(OrderRequest request) {
         String correlationId = UUID.randomUUID().toString();
         MDC.put("correlationId", correlationId);
+        MDC.put("correlation_id", correlationId);
         try {
             String orderId = UUID.randomUUID().toString();
             OrderEntity order = new OrderEntity();
@@ -63,13 +64,13 @@ public class OrderService {
             order.setStatus(OrderStatus.PAYMENT_PENDING);
             repository.save(order);
 
-            log.info("event=order_created orderId={} customerId={} amount={} currency={}", orderId, request.customerId(), request.amount(), request.currency());
+            log.info("operation=order_persisted event_id=order_created order_id={} customer_id={} amount={} currency={}", orderId, request.customerId(), request.amount(), request.currency());
 
             boolean approved = paymentClient.authorize(orderId, order.getAmount(), order.getCurrency());
             if (!approved) {
                 order.setStatus(OrderStatus.PAYMENT_FAILED);
                 repository.save(order);
-                log.warn("event=payment_failed orderId={}", orderId);
+                log.warn("operation=payment_authorization_failed event_id=payment_authorization_failed order_id={}", orderId);
                 return new OrderResponse(orderId, order.getStatus().name(), correlationId, currentTraceId());
             }
 
@@ -81,14 +82,16 @@ public class OrderService {
             }
             kafkaTemplate.send("order-events", Map.of("type", "OrderCreatedEvent", "orderId", orderId,
                     "customerId", request.customerId(), "amount", request.amount(), "currency", request.currency()));
+            log.info("operation=kafka_event_published event_id=order_created_event topic=order-events order_id={}", orderId);
 
             notificationPublisher.publishNotificationRequested(orderId, request.customerId());
             ordersCreatedCounter.increment();
-            log.info("event=order_processed orderId={} status={}", orderId, order.getStatus().name());
+            log.info("operation=order_processed event_id=order_processed order_id={} status={}", orderId, order.getStatus().name());
 
             return new OrderResponse(orderId, order.getStatus().name(), correlationId, currentTraceId());
         } finally {
             MDC.remove("correlationId");
+            MDC.remove("correlation_id");
         }
     }
 

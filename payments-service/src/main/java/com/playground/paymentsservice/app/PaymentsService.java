@@ -38,6 +38,8 @@ public class PaymentsService {
 
     public PaymentAuthorizationResponse authorize(PaymentAuthorizationRequest request) {
         authorizationCounter.increment();
+        log.info("operation=payment_authorization_started event_id=payment_authorization_started order_id={} amount={} currency={}",
+                request.orderId(), request.amount(), request.currency());
         simulateDelay();
         simulateForcedStatus();
         simulateTimeout();
@@ -45,10 +47,11 @@ public class PaymentsService {
 
         if (properties.declineEnabled()) {
             registerFailure("declined");
+            log.warn("operation=payment_authorization_failed event_id=payment_authorization_declined order_id={}", request.orderId());
             return new PaymentAuthorizationResponse(UUID.randomUUID().toString(), request.orderId(), "DECLINED");
         }
 
-        log.info("event=payment_authorized orderId={} amount={} currency={} status=AUTHORIZED",
+        log.info("operation=payment_authorization_succeeded event_id=payment_authorization_succeeded order_id={} amount={} currency={} status=AUTHORIZED",
                 request.orderId(), request.amount(), request.currency());
 
         return new PaymentAuthorizationResponse(UUID.randomUUID().toString(), request.orderId(), "AUTHORIZED");
@@ -88,7 +91,7 @@ public class PaymentsService {
 
     private void registerFailure(String mode) {
         failureCounter.increment();
-        log.warn("event=payment_failure_mode_triggered mode={}", mode);
+        log.warn("operation=payment_authorization_failed event_id=payment_failure_mode_triggered mode={}", mode);
     }
 
     private void sleep(long millis) {
