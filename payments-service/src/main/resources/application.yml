@@ -8,7 +8,25 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  structured:
+    format:
+      console: ecs
+    ecs:
+      service:
+        name: ${spring.application.name}
+        environment: ${ENVIRONMENT:local}
+      fields:
+        correlation_id: ${CORRELATION_ID:}
 
 failure-simulation:
   payments:
@@ -18,3 +36,11 @@ failure-simulation:
     invalid-json-enabled: false
     decline-enabled: false
     timeout-enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  kafka:
+    bootstrap-servers: redpanda:9092
