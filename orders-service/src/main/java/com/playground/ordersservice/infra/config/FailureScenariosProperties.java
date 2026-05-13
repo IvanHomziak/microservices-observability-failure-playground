@@ -9,6 +9,7 @@ public class FailureScenariosProperties {
     private boolean paymentInvalidResponse;
     private boolean publishKafkaFailure;
     private boolean publishNotificationFailure;
+    private boolean tracingBreakPropagationToPayments;
 
     public boolean isPaymentTimeout() { return paymentTimeout; }
     public void setPaymentTimeout(boolean paymentTimeout) { this.paymentTimeout = paymentTimeout; }
@@ -20,4 +21,6 @@ public class FailureScenariosProperties {
     public void setPublishKafkaFailure(boolean publishKafkaFailure) { this.publishKafkaFailure = publishKafkaFailure; }
     public boolean isPublishNotificationFailure() { return publishNotificationFailure; }
     public void setPublishNotificationFailure(boolean publishNotificationFailure) { this.publishNotificationFailure = publishNotificationFailure; }
+    public boolean isTracingBreakPropagationToPayments() { return tracingBreakPropagationToPayments; }
+    public void setTracingBreakPropagationToPayments(boolean tracingBreakPropagationToPayments) { this.tracingBreakPropagationToPayments = tracingBreakPropagationToPayments; }
 }

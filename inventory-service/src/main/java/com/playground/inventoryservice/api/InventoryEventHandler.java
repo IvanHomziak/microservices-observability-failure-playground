@@ -25,12 +25,14 @@ public class InventoryEventHandler {
     private final Counter idempotencyConflictCounter;
     private final Set<String> processedEventIds = ConcurrentHashMap.newKeySet();
     private final Set<String> reservedOrderIds = ConcurrentHashMap.newKeySet();
+    private final KafkaFailureSimulationProperties failureSimulationProperties;
 
-    public InventoryEventHandler(MeterRegistry meterRegistry) {
+    public InventoryEventHandler(MeterRegistry meterRegistry, KafkaFailureSimulationProperties failureSimulationProperties) {
         this.reservationAttemptCounter = meterRegistry.counter("inventory.reservation.attempts");
         this.reservationSuccessCounter = meterRegistry.counter("inventory.reservation.success");
         this.duplicateEventCounter = meterRegistry.counter("inventory.events.duplicates");
         this.idempotencyConflictCounter = meterRegistry.counter("inventory.events.idempotency_conflict");
+        this.failureSimulationProperties = failureSimulationProperties;
     }
 
     @KafkaListener(topics = "${app.kafka.topics.order-created}", groupId = "${spring.kafka.consumer.group-id}")
@@ -72,7 +74,7 @@ public class InventoryEventHandler {
                 return;
             }
 
-            if ("poison-message".equalsIgnoreCase(scenario)) {
+            if (failureSimulationProperties.poisonMessageEnabled() || "poison-message".equalsIgnoreCase(scenario)) {
                 throw new IllegalStateException("Simulated poison message");
             }
 
@@ -80,8 +82,9 @@ public class InventoryEventHandler {
                 throw new RuntimeException("Simulated retry storm trigger");
             }
 
-            if ("processing-delay".equalsIgnoreCase(scenario)) {
-                Thread.sleep(10_000);
+            if (failureSimulationProperties.processingDelayMs() > 0 || "processing-delay".equalsIgnoreCase(scenario)) {
+                long delayMs = failureSimulationProperties.processingDelayMs() > 0 ? failureSimulationProperties.processingDelayMs() : 10_000;
+                Thread.sleep(delayMs);
             }
 
             reservationSuccessCounter.increment();
