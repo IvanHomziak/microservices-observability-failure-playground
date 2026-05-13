@@ -16,13 +16,24 @@ management:
     web:
       exposure:
         include: health,info,prometheus,metrics,env
+  endpoint:
+    health:
+      probes:
+        enabled: true
   tracing:
     sampling:
       probability: 1.0
 
 logging:
-  pattern:
-    level: "%5p [traceId:%X{traceId:-}] [spanId:%X{spanId:-}] [correlationId:%X{correlationId:-}]"
+  structured:
+    format:
+      console: ecs
+    ecs:
+      service:
+        name: ${spring.application.name}
+        environment: ${ENVIRONMENT:local}
+      fields:
+        correlation_id: ${CORRELATION_ID:}
 
 orders:
   rest-clients:
@@ -36,3 +47,13 @@ orders:
     publish-kafka-failure: false
     publish-notification-failure: false
     tracing-break-propagation-to-payments: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://postgres:5432/orders
+  kafka:
+    bootstrap-servers: redpanda:9092
