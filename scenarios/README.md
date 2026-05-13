@@ -1,39 +1,35 @@
 # Failure Scenarios
 
-This folder tracks deterministic incident playbooks for the microservices observability playground.
+This folder contains deterministic incident playbooks for the microservices observability failure playground.
 
-## Scenario template requirements
+## Scenario files
 
-Each scenario document must include:
+- `S001-resttemplate-timeout.md`
+- `S002-payments-http-500.md`
+- `S003-db-slow-query.md`
+- `S004-kafka-poison-message.md`
+- `S005-kafka-consumer-lag.md`
+- `S006-pubsub-publish-failure.md`
+- `S007-broken-trace-propagation.md`
+- `S008-missing-correlation-id.md`
 
-1. **Objective** - what failure behavior is being simulated.
-2. **Deterministic toggle** - exact mechanism to enable/disable failure.
-3. **Trigger steps** - commands or requests to execute.
-4. **Expected app symptom** - status codes, latency, async delay, etc.
-5. **Expected telemetry evidence**
-   - logs (required fields and representative events),
-   - metrics (which counters/timers/gauges should move),
-   - traces (where error spans should appear).
-6. **Expected root cause** - canonical explanation.
-7. **Validation checks** - concrete evidence confirming diagnosis.
-8. **Recovery / rollback** - exact steps to return to healthy state.
+## Required section contract (per scenario)
 
-## Scenario catalog
+Each scenario file includes:
 
-- `001-payment-timeout.md` - synchronous downstream timeout propagation and retries.
-- `002-inventory-consistency.md` - mismatch between reservation and order state.
-- `003-notification-backlog.md` - delayed async notifications under queue pressure.
-- `004-kafka-consumer-lag.md` - consumer lag growth and stale event processing.
-- `005-pubsub-publish-failure.md` - publish/ack failure for Pub/Sub-like fan-out path.
-- `006-resttemplate-connectivity.md` - DNS/refused connection causing hard dependency failure.
+- Scenario ID
+- Description
+- Services involved
+- How to enable the scenario
+- How to trigger it
+- Expected logs
+- Expected traces
+- Expected metrics
+- Expected root cause
+- What the AI diagnostics agent should conclude
+- Known limitations
 
-## Evidence quality bar
+## Implementation status
 
-A scenario is considered "ready" only if an external AI diagnostics agent can produce a report containing:
-
-- impacted request scope,
-- correlated `trace_id` values,
-- implicated service and dependency,
-- telemetry-backed root-cause narrative,
-- confidence statement with explicit evidence references.
-
+- **Fully implemented in this iteration:** `S001-resttemplate-timeout`
+- **Documentation + placeholders:** `S002` through `S008`
