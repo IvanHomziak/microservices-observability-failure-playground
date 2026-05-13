@@ -9,3 +9,12 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+
+failure-simulation:
+  payments:
+    delay-ms: 0
+    forced-status-code: 0
+    failure-rate: 0.0
+    invalid-json-enabled: false
+    decline-enabled: false
+    timeout-enabled: false
