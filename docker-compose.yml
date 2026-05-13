@@ -1,5 +1,9 @@
 version: '3.9'
 
+# First-pass reduced scope:
+# - Fully implemented and runnable: api-gateway, orders-service, payments-service, PostgreSQL.
+# - Placeholder/skeleton only: Kafka/Redpanda and full observability stack.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -10,148 +14,34 @@ services:
     ports:
       - "5432:5432"
 
-  redpanda:
-    image: redpandadata/redpanda:v24.2.9
-    command:
-      - redpanda
-      - start
-      - --overprovisioned
-      - --smp
-      - "1"
-      - --memory
-      - 1G
-      - --reserve-memory
-      - 0M
-      - --node-id
-      - "0"
-      - --check=false
-      - --kafka-addr
-      - PLAINTEXT://0.0.0.0:9092,OUTSIDE://0.0.0.0:19092
-      - --advertise-kafka-addr
-      - PLAINTEXT://redpanda:9092,OUTSIDE://localhost:19092
-      - --pandaproxy-addr
-      - 0.0.0.0:8082
-      - --advertise-pandaproxy-addr
-      - redpanda:8082
-    ports:
-      - "19092:19092"
-      - "9644:9644"
-
-  redpanda-console:
-    image: redpandadata/console:v2.7.2
-    depends_on:
-      - redpanda
+  api-gateway:
+    build: ./api-gateway
     environment:
-      KAFKA_BROKERS: redpanda:9092
+      SPRING_PROFILES_ACTIVE: docker
+      OTEL_SERVICE_NAME: api-gateway
+      ENVIRONMENT: local
+    depends_on:
+      - orders-service
     ports:
       - "8080:8080"
 
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.104.0
-    command: ["--config=/etc/otelcol-contrib/config.yaml"]
-    volumes:
-      - ./observability/otel-collector/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
-    ports:
-      - "4317:4317"
-
-  prometheus:
-    image: prom/prometheus:v2.54.1
-    depends_on:
-      - otel-collector
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-
-  loki:
-    image: grafana/loki:3.1.1
-    command: ["-config.file=/etc/loki/local-config.yaml"]
-    ports:
-      - "3100:3100"
-    volumes:
-      - ./observability/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
-
-  promtail:
-    image: grafana/promtail:3.1.1
-    command: ["-config.file=/etc/promtail/config.yml"]
-    depends_on:
-      - loki
-    volumes:
-      - ./observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-
-  tempo:
-    image: grafana/tempo:2.6.1
-    command: ["-config.file=/etc/tempo.yaml"]
-    ports:
-      - "3200:3200"
-    volumes:
-      - ./observability/tempo/tempo.yml:/etc/tempo.yaml:ro
-
-  grafana:
-    image: grafana/grafana:11.2.0
-    depends_on:
-      - prometheus
-      - loki
-      - tempo
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-
-  api-gateway:
-    build: ./api-gateway
-    environment: &svc-env
-      SPRING_PROFILES_ACTIVE: docker
-      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4317/v1/traces
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-      OTEL_SERVICE_NAME: api-gateway
-      ENVIRONMENT: local
-    depends_on: [orders-service]
-    ports: ["8080:8080"]
-
   orders-service:
     build: ./orders-service
-    environment: &backend-env
+    environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orders
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4317/v1/traces
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: orders-service
       ENVIRONMENT: local
-    depends_on: [postgres, redpanda, otel-collector]
-    ports: ["8081:8081"]
+    depends_on:
+      - postgres
+    ports:
+      - "8081:8081"
 
   payments-service:
     build: ./payments-service
     environment:
-      <<: *backend-env
+      SPRING_PROFILES_ACTIVE: docker
       OTEL_SERVICE_NAME: payments-service
-    depends_on: [redpanda, otel-collector]
-    ports: ["8082:8082"]
-
-  inventory-service:
-    build: ./inventory-service
-    environment:
-      <<: *backend-env
-      OTEL_SERVICE_NAME: inventory-service
-    depends_on: [redpanda, otel-collector]
-    ports: ["8083:8083"]
-
-  audit-service:
-    build: ./audit-service
-    environment:
-      <<: *backend-env
-      OTEL_SERVICE_NAME: audit-service
-    depends_on: [redpanda, otel-collector]
-    ports: ["8084:8084"]
-
-  notification-service:
-    build: ./notification-service
-    environment:
-      <<: *backend-env
-      OTEL_SERVICE_NAME: notification-service
-    depends_on: [redpanda, otel-collector]
-    ports: ["8085:8085"]
+      ENVIRONMENT: local
+    ports:
+      - "8082:8082"
