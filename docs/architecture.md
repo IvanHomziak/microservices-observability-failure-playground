@@ -1,100 +1,46 @@
-# Architecture Notes
+# Architecture Notes (Milestone 1 reality)
 
-This playground favors **simple business behavior** and **high observability density**. It is intentionally not a full product system.
+This playground currently prioritizes a **small, deterministic, runnable** failure-analysis surface over a full distributed platform.
 
-## Design principles
+## What is actually in Milestone 1
 
-1. **Simple domain, complex failure analysis**
-   - Order placement is the central flow.
-   - Business rules stay intentionally minimal so diagnosis effort focuses on telemetry and causality.
-
-2. **Deterministic and replayable failures**
-   - Every failure scenario must have explicit toggles (feature flags, headers, injected latency/error rates, or scripted state).
-   - A scenario should be reproducible on demand and reversible.
-
-3. **Cross-signal observability parity**
-   - Each meaningful request path should produce:
-     - structured logs,
-     - metrics,
-     - traces.
-   - Failures should be visible in all three signals with consistent IDs.
-
-4. **AI-agent friendly evidence model**
-   - Scenarios must expose enough evidence for an external diagnostics agent to infer root cause from telemetry, not hidden implementation details.
-
-## Baseline request and event topology
-
-### Synchronous (HTTP)
-
+### Stable synchronous path
 1. Client -> `api-gateway`
 2. `api-gateway` -> `orders-service`
 3. `orders-service` -> `payments-service`
-4. `orders-service` -> `inventory-service`
+4. `orders-service` persists order state in PostgreSQL
 
-### Asynchronous (Kafka / Pub-Sub-like)
+### Failure scenario in scope
+- **S001** (`RestTemplate` timeout from `orders-service` to `payments-service`) is the only fully stabilized, verified failure scenario in this milestone.
 
-5. `orders-service` publishes domain events (e.g., `order.created`, `order.failed`).
-6. `notification-service` and `audit-service` consume events.
-7. Optional fan-out or forwarding can emulate Pub/Sub-like behavior (topic-based routing and independent consumers).
+## Deferred/disabled-by-default areas
 
-## Context propagation contract
+### Kafka
+- Kafka-style event publishing code paths exist, but Kafka runtime flow is **deferred for Milestone 1**.
+- In default Milestone 1 config, Kafka publishing is disabled (`orders.events.kafka.enabled: false`).
+- Do not treat Kafka scenarios as runnable acceptance criteria for this milestone.
 
-Where transport allows, services should propagate a common tracing and correlation envelope:
+### Pub/Sub-like notifications
+- Notification behavior is currently local/simulated; real external Pub/Sub integration is deferred.
+- Pub/Sub failure scenarios are placeholders until a real runtime integration is implemented and tested.
 
-- W3C `traceparent` / `tracestate` for distributed traces.
-- Baggage or headers for domain context where appropriate.
-- Message headers for Kafka and Pub/Sub-like events.
+### Observability stack
+- Observability configuration files exist (`observability/*`), but a full production-like stack is **not required** for Milestone 1 verification.
+- Milestone 1 acceptance is based on API behavior, health checks, and reproducible scenario outcomes (SUCCESS + S001), not on Grafana/Loki/Tempo dashboards being operational.
 
-### Required IDs in logs
+## Why this scope is intentional
+- Keeps diagnosis deterministic for AI-agent evaluation.
+- Reduces infrastructure noise while validating contract-level behavior:
+  - success response contract,
+  - timeout error contract (`PAYMENT_TIMEOUT`, HTTP 504),
+  - correlation ID propagation.
 
-Each service should emit structured logs including:
+## AI diagnostics compatibility in Milestone 1
+A diagnostics agent should be able to:
+1. detect a failed `POST /api/orders` symptom,
+2. pivot by `correlationId` across gateway/orders/payments logs,
+3. infer downstream timeout as root cause,
+4. produce an evidence-backed conclusion consistent with S001 expectations.
 
-- `service_name`
-- `trace_id`
-- `span_id`
-- `correlation_id`
-- `request_id`
-- domain IDs (for example `order_id`, `payment_id`, `inventory_reservation_id`, `notification_id`)
-
-## Telemetry requirements
-
-### Metrics
-
-- Spring Boot Actuator endpoints enabled (`/actuator/health`, `/actuator/prometheus`, etc.).
-- Micrometer used for:
-  - HTTP latency and error rates,
-  - downstream dependency timings,
-  - message publish/consume rates,
-  - retry counts, timeout counts, and backlog/lag gauges.
-
-### Traces
-
-- OpenTelemetry instrumentation for incoming HTTP, outgoing HTTP, and message producer/consumer spans.
-- Error classification should appear on spans (`status=ERROR`) with relevant attributes.
-
-### Logs
-
-- JSON structured logging with stable field names.
-- Log entries should always support pivoting from metrics/traces back to causal events.
-
-## Failure toggle model
-
-Every scenario should define:
-
-- **Toggle type**: config flag, request header, runtime endpoint, or script.
-- **Activation scope**: one request, percentage, service-wide, or consumer-group scoped.
-- **Expected impact**: user symptom and blast radius.
-- **Expected telemetry signature**: logs + metrics + traces.
-- **Rollback**: exact command/config to return to healthy baseline.
-
-## AI diagnostics workflow compatibility
-
-The platform should enable this external agent loop:
-
-1. detect anomalous SLO/SLI condition,
-2. identify affected request IDs and trace IDs,
-3. reconstruct cross-service call/event path,
-4. compare healthy vs failing telemetry patterns,
-5. produce evidence-based root-cause hypothesis,
-6. validate hypothesis against deterministic scenario expectation.
-
+## Recommended next milestone
+After maintaining S001 stability, add one additional deterministic synchronous failure (recommended: S002 payments HTTP 500) plus script-based verification, then expand asynchronous infrastructure incrementally.

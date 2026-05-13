@@ -1,45 +1,69 @@
 # microservices-observability-failure-playground
 
-## Milestone 1 (stable, runnable)
+## Project purpose
+This repository is a deterministic playground for practicing incident diagnosis in a microservices environment. The current stable scope is intentionally small so failures are reproducible and evidence is easy to correlate across HTTP responses, logs, and service boundaries.
 
-### Implemented now
-- `api-gateway`, `orders-service`, `payments-service`, PostgreSQL.
-- Docker Compose end-to-end order flow.
-- Successful order path through `POST /api/orders`.
-- S001 (`RestTemplate` timeout from orders -> payments).
-- Correlation ID propagation and error contract with correlation ID.
-- Kafka publishing feature-flagged OFF by default for this milestone.
-- Notification publishing implemented as local simulated log publish (no external Pub/Sub dependency).
+## Milestone 1 scope (current truth)
+Milestone 1 is the first stable vertical slice:
+- Synchronous HTTP request flow through `api-gateway -> orders-service -> payments-service`.
+- PostgreSQL persistence used by `orders-service`.
+- One fully implemented failure scenario: **S001 RestTemplate timeout**.
+- Correlation ID propagation and stable error contract for timeout failures.
 
-### Deferred (not required in Milestone 1)
-- Real Kafka/Redpanda integration as a runtime dependency.
+## Implemented services (Milestone 1)
+- `api-gateway`
+- `orders-service`
+- `payments-service`
+- `postgres`
+
+## Deferred services/features (not part of Milestone 1 acceptance)
+- Kafka end-to-end runtime flow (producer/consumer topology is not required for this milestone).
 - Real Pub/Sub integration.
-- Grafana/Loki/Tempo/Prometheus production-ready stack.
-- Other scenarios (`S002+`) as complete E2E flows.
+- Full observability stack validation (Grafana/Loki/Tempo/Prometheus are present as config/assets, but not part of the required runnable contract in Milestone 1).
+- Scenarios `S002`–`S008` as fully working end-to-end implementations.
 
-## Run
+## How an AI diagnostics agent should use this playground
+The intended loop for an AI diagnostics agent in Milestone 1 is:
+1. Trigger a known scenario (`SUCCESS` or `S001`).
+2. Read the API symptom from the gateway response.
+3. Pivot by `correlationId` through `api-gateway`, `orders-service`, and `payments-service` logs.
+4. Confirm service boundary behavior (`orders-service` timeout while calling `payments-service`).
+5. Produce a root-cause conclusion and confidence statement.
+
+Because S001 is deterministic, the agent can be validated against expected conclusions, not just generic anomaly detection.
+
+## Run locally
 ```bash
 docker compose up -d --build
 ```
 
-## Deterministic Milestone 1 verification
+Optional teardown:
+```bash
+./scripts/stop-local.sh
+```
+
+## Verify Milestone 1
+Use the deterministic verifier script:
 ```bash
 ./scripts/verify-milestone-1.sh
 ```
-This runs the full local Milestone 1 contract verification (stack startup, health checks, SUCCESS flow assertions, and S001 timeout assertions) without requiring Kafka, Pub/Sub, or the observability stack.
 
-## Health checks
-```bash
-curl http://localhost:8080/actuator/health
-curl http://localhost:8081/actuator/health
-curl http://localhost:8082/actuator/health
-```
+This script:
+- starts the stack,
+- waits for health checks on `8080`, `8081`, `8082`,
+- verifies a successful order flow,
+- verifies S001 timeout flow returns the expected contract.
 
-## Successful flow
+## Trigger successful flow
 ```bash
 ./scripts/trigger-successful-order.sh
 ```
-Expected: HTTP 2xx with JSON similar to:
+Endpoint used: `POST /api/orders` via `http://localhost:8080/api/orders`.
+
+### Expected SUCCESS response
+HTTP: `2xx`
+
+Representative body shape:
 ```json
 {
   "orderId": "<uuid>",
@@ -49,11 +73,16 @@ Expected: HTTP 2xx with JSON similar to:
 }
 ```
 
-## S001 timeout flow
+## Trigger S001 (RestTemplate timeout)
 ```bash
 ./scripts/trigger-s001-resttemplate-timeout.sh
 ```
-Expected: HTTP `504` with JSON similar to:
+Endpoint used: `POST /api/orders` via `http://localhost:8080/api/orders`.
+
+### Expected S001 response
+HTTP: `504 Gateway Timeout`
+
+Representative body shape:
 ```json
 {
   "code": "PAYMENT_TIMEOUT",
@@ -64,6 +93,10 @@ Expected: HTTP `504` with JSON similar to:
 ```
 
 ## Known limitations
-- `traceId` can be empty if no active tracing span context is present for a specific response path.
-- S001 depends on timeout/delay settings; timing can vary slightly by host performance.
-- Placeholder services (`inventory-service`, `notification-service`, `audit-service`) are outside the stable Milestone 1 E2E path.
+- `S001` depends on timeout-vs-delay timing and can vary slightly by host performance.
+- `traceId` may be empty in some response paths even when `correlationId` is present.
+- Placeholder services (`inventory-service`, `notification-service`, `audit-service`) are not part of the stable Milestone 1 E2E contract.
+- Do not treat Kafka/PubSub/observability UI assets as validated runtime features for Milestone 1 unless you explicitly enable and test them.
+
+## Next recommended milestone
+**Milestone 2 recommendation:** implement and stabilize **S002 (payments HTTP 500)** as the second deterministic synchronous failure, then add automated verification for S001 + S002 together before expanding asynchronous infrastructure.

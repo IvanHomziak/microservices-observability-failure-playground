@@ -1,17 +1,17 @@
 # Failure Scenarios
 
-## First-pass status
+## Status matrix
 
-### Fully implemented
-- `S001-resttemplate-timeout.md`
+### Implemented
+- `S001` — `S001-resttemplate-timeout.md` ✅ implemented and verified for Milestone 1.
 
-### Placeholder documentation (not fully implemented)
-- `S002-payments-http-500.md`
-- `S003-db-slow-query.md`
-- `S004-kafka-poison-message.md`
-- `S005-kafka-consumer-lag.md`
-- `S006-pubsub-publish-failure.md`
-- `S007-broken-trace-propagation.md`
-- `S008-missing-correlation-id.md`
+### Documented but deferred / placeholder
+- `S002` — `S002-payments-http-500.md` (documented, deferred)
+- `S003` — `S003-db-slow-query.md` (documented, deferred)
+- `S004` — `S004-kafka-poison-message.md` (placeholder/deferred)
+- `S005` — `S005-kafka-consumer-lag.md` (placeholder/deferred)
+- `S006` — `S006-pubsub-publish-failure.md` (placeholder/deferred)
+- `S007` — `S007-broken-trace-propagation.md` (placeholder/deferred)
+- `S008` — `S008-missing-correlation-id.md` (placeholder/deferred)
 
-This pass prioritizes a working S001 end-to-end scenario over a broad but unstable stack.
+Milestone 1 intentionally stabilizes one end-to-end failure (S001) before expanding scenario breadth.
