@@ -1,14 +1,22 @@
 package com.playground.notificationservice.api;
 
-import org.springframework.kafka.annotation.KafkaListener;
+import com.playground.notificationservice.app.NotificationProcessor;
+import com.playground.notificationservice.domain.PubSubPort;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Component;
-
-import java.util.Map;
 
 @Component
 public class NotificationEventHandler {
-    @KafkaListener(topics = "notification-events", groupId = "notification-service")
-    public void onNotificationEvent(Map<String, Object> event) {
-        System.out.println("Notification sent for order " + event.get("orderId"));
+    private final PubSubPort pubSubPort;
+    private final NotificationProcessor notificationProcessor;
+
+    public NotificationEventHandler(PubSubPort pubSubPort, NotificationProcessor notificationProcessor) {
+        this.pubSubPort = pubSubPort;
+        this.notificationProcessor = notificationProcessor;
+    }
+
+    @PostConstruct
+    void subscribe() {
+        pubSubPort.subscribe("notification-events", notificationProcessor::process);
     }
 }
