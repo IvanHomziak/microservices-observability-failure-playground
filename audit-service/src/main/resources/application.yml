@@ -1,6 +1,8 @@
 spring:
   application:
     name: audit-service
+  kafka:
+    bootstrap-servers: localhost:9092
 
 management:
   endpoints:

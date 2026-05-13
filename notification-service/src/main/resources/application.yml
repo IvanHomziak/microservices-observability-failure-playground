@@ -1,6 +1,8 @@
 spring:
   application:
     name: notification-service
+  kafka:
+    bootstrap-servers: localhost:9092
 
 management:
   endpoints:
