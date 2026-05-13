@@ -1,97 +1,144 @@
 # microservices-observability-failure-playground
 
-A production-style incident playground built with **Java 21** and **Spring Boot 3.x** to generate repeatable cross-service failures for AI-assisted diagnostics.
+A hands-on incident simulation repository built with **Java 21** and **Spring Boot 3.x**.
+
+This playground is intentionally designed to create realistic microservice failures, then make those failures observable through logs, metrics, and traces so humans and AI agents can practice diagnosis.
 
 ## Project purpose
 
-This repository provides deterministic failure scenarios (timeouts, dependency errors, message-delivery issues, and bad data paths) with full telemetry. It enables validation of whether an AI diagnostics agent can correlate logs, metrics, and traces to identify root causes quickly.
+The goal is to provide a repeatable environment where you can:
+- trigger known failure modes,
+- observe system behavior across service boundaries,
+- practice root-cause analysis,
+- evaluate how well an AI diagnostics agent can reason over telemetry.
 
 ## High-level architecture
 
-- `api-gateway` fronts client requests and propagates trace context.
-- `orders-service` orchestrates order lifecycle.
-- `payments-service`, `inventory-service`, and `notification-service` are downstream dependencies.
-- `audit-service` captures immutable operational events.
-- Shared infrastructure in Docker Compose provides observability and messaging dependencies.
+Client traffic enters through `api-gateway`, then fans out to domain services. The domain flow is centered around order processing:
+
+1. `orders-service` receives order requests.
+2. `orders-service` calls `payments-service` and `inventory-service`.
+3. `orders-service` emits events for `notification-service` and `audit-service`.
+4. All services emit telemetry to the observability stack.
+
+## Repository structure
+
+```text
+microservices-observability-failure-playground/
+  README.md
+  docs/
+  scenarios/
+  docker-compose.yml
+  observability/
+  scripts/
+  api-gateway/
+  orders-service/
+  payments-service/
+  inventory-service/
+  notification-service/
+  audit-service/
+```
+
+Each service is a **standalone Maven Spring Boot project** (not a complex multi-module parent build), to keep local execution simple and explicit.
 
 ## Services
 
-- `api-gateway` (port 8080)
-- `orders-service` (port 8081)
-- `payments-service` (port 8082)
-- `inventory-service` (port 8083)
-- `notification-service` (port 8084)
-- `audit-service` (port 8085)
-
-Each service is an **independent Maven Spring Boot project** for simple local execution.
+- `api-gateway` (HTTP entrypoint, trace context propagation) - default port `8080`
+- `orders-service` (orchestration) - default port `8081`
+- `payments-service` (payment authorization/capture simulation) - default port `8082`
+- `inventory-service` (reservation/stock simulation) - default port `8083`
+- `notification-service` (async user communication simulation) - default port `8084`
+- `audit-service` (immutable operational audit events) - default port `8085`
 
 ## Failure scenarios
 
-Scenario playbooks are under `scenarios/`:
+The `scenarios/` folder contains predefined incident playbooks, for example:
+- downstream timeout and retry storms,
+- inventory consistency mismatches,
+- queue backlog / delayed notifications,
+- poison messages and consumer lag,
+- connectivity failures (DNS/refused connection),
+- auth/publish failures on external integrations.
 
-1. Downstream payment timeout causing order failures.
-2. Inventory stale-read or oversell path causing compensations.
-3. Notification queue backlog and delayed delivery.
-4. Kafka consumer lag / poison-message behavior.
-5. Google Pub/Sub publish/auth failure path.
-6. RestTemplate DNS/connection errors between services.
+Each scenario will include:
+- setup steps,
+- trigger command(s),
+- expected user-visible impact,
+- expected telemetry signatures,
+- recovery/rollback guidance.
 
 ## Observability stack
 
-- Spring Boot Actuator + Micrometer metrics
-- OpenTelemetry tracing via OTLP exporter
-- Prometheus (metrics scrape)
-- Tempo (trace backend)
-- Grafana (dashboards + trace pivot)
-- Loki + Promtail (log aggregation)
+`docker-compose.yml` provisions local tooling for cross-signal analysis:
+- **Prometheus** for metrics scraping,
+- **Grafana** for dashboards and investigation,
+- **Tempo** for distributed tracing,
+- **Loki** for centralized logs,
+- plus supporting messaging infrastructure (Kafka/Zookeeper).
 
-Configuration lives in `observability/` and is wired by `docker-compose.yml`.
+Observability configuration files live under `observability/`.
 
-## AI diagnostics agent workflow
+## How an AI diagnostics agent uses this playground
 
-The playground is designed for an agent to:
+A diagnostics agent can run the following loop:
+1. detect an incident signal (e.g., elevated 5xx, latency spikes),
+2. discover candidate failing requests,
+3. extract `traceId` from logs,
+4. pivot to traces and map cross-service causal chains,
+5. correlate metrics/logs/traces to infer likely root cause,
+6. return a diagnosis with confidence and remediation suggestions.
 
-1. Receive an incident signal (error-rate spike, latency SLO breach, queue lag).
-2. Retrieve candidate trace IDs from logs/metrics.
-3. Traverse distributed traces to isolate the failing span/service.
-4. Correlate infrastructure and runtime symptoms (JVM pressure, retries, circuit behavior).
-5. Produce a root-cause statement plus confidence and remediation suggestions.
+Because scenarios are deterministic, the diagnosis can be validated against expected outcomes.
 
 ## Run locally
 
-1. Start observability and shared dependencies:
-   ```bash
-   docker compose up -d
-   ```
-2. Start each service in a separate terminal:
-   ```bash
-   cd <service>
-   mvn spring-boot:run
-   ```
-3. Validate health endpoints:
-   ```bash
-   curl http://localhost:8080/actuator/health
-   ```
+### 1) Start shared infrastructure
 
-## Trigger incidents
+```bash
+docker compose up -d
+```
 
-Use helper scripts in `scripts/` and scenario instructions in `scenarios/`.
-Example (future):
+### 2) Start each Spring Boot service
+
+Open a terminal per service:
+
+```bash
+cd api-gateway && mvn spring-boot:run
+cd orders-service && mvn spring-boot:run
+cd payments-service && mvn spring-boot:run
+cd inventory-service && mvn spring-boot:run
+cd notification-service && mvn spring-boot:run
+cd audit-service && mvn spring-boot:run
+```
+
+### 3) Verify readiness
+
+```bash
+curl http://localhost:8080/actuator/health
+curl http://localhost:8081/actuator/health
+```
+
+## How to trigger incidents
+
+Use scripts from `scripts/` (to be expanded per scenario) and scenario playbooks in `scenarios/`:
+
 ```bash
 ./scripts/trigger-payment-timeout.sh
 ```
 
-## Find trace IDs
+## How to find trace IDs
 
-1. Trigger traffic through `api-gateway`.
-2. Inspect logs for `traceId` fields.
-3. Open Grafana Explore and query logs for a failing request.
-4. Pivot from logs to the corresponding Tempo trace.
+1. Send a request through `api-gateway`.
+2. Locate the request in service logs and copy `traceId`.
+3. In Grafana Explore, query logs in Loki for that `traceId`.
+4. Pivot to Tempo trace view to inspect spans and error boundaries.
 
 ## Expected outputs from each scenario
 
-For every scenario, expect:
-- a predictable user-facing symptom (HTTP 5xx, delayed async confirmation, etc.),
-- a known failing component,
-- specific telemetry signatures (error logs, span status/error tag, metric deltas),
-- an unambiguous root cause that can be validated by trace ID.
+Every scenario should produce all of the following:
+- **Application symptom**: e.g., HTTP 500/504, slow response, delayed async completion.
+- **Telemetry pattern**: correlated error logs, span error status, and metric anomalies.
+- **Root-cause target**: one primary failing dependency/service with supporting evidence.
+- **Validation signal**: a trace-level and/or metric-level condition that confirms the diagnosis.
+
+This makes the playground suitable for both training and benchmarking operational diagnostics.

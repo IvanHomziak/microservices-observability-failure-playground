@@ -2,14 +2,8 @@ spring:
   application:
     name: orders-service
 
-server:
-  port: 8081
-
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
-  tracing:
-    sampling:
-      probability: 1.0
+        include: health,info,prometheus
