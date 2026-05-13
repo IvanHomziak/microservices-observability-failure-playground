@@ -7,17 +7,17 @@ public record RestClientsProperties(RestClients restClients) {
 
     public RestClientsProperties {
         if (restClients == null) {
-            restClients = new RestClients(new TimeoutSettings(2_000, 3_000));
+            restClients = new RestClients(new Payments("http://localhost:8082", 2_000, 3_000));
         }
     }
 
-    public record RestClients(TimeoutSettings payments) {
+    public record RestClients(Payments payments) {
         public RestClients {
             if (payments == null) {
-                payments = new TimeoutSettings(2_000, 3_000);
+                payments = new Payments("http://localhost:8082", 2_000, 3_000);
             }
         }
     }
 
-    public record TimeoutSettings(int connectTimeoutMs, int readTimeoutMs) {}
+    public record Payments(String baseUrl, int connectTimeoutMs, int readTimeoutMs) {}
 }

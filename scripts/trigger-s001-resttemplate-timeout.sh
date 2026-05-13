@@ -4,7 +4,7 @@ set -euo pipefail
 SCENARIO_ID="S001"
 URL="http://localhost:8080/api/orders"
 CORRELATION_ID="s001-$(date +%s)"
-PAYLOAD='{"sku":"SKU-123","quantity":1,"amount":19.99,"currency":"USD"}'
+PAYLOAD='{"customerId":"customer-123","amount":19.99,"currency":"USD"}'
 TMP_HEADERS="$(mktemp)"
 TMP_BODY="$(mktemp)"
 trap 'rm -f "$TMP_HEADERS" "$TMP_BODY"' EXIT
