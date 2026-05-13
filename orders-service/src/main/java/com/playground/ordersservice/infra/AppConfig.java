@@ -17,7 +17,7 @@ import java.time.Duration;
 public class AppConfig {
     @Bean
     RestTemplate restTemplate(RestTemplateBuilder builder, RestClientsProperties restClientsProperties, FailureScenariosProperties failureScenariosProperties) {
-        RestClientsProperties.TimeoutSettings paymentsTimeouts = restClientsProperties.restClients().payments();
+        RestClientsProperties.Payments paymentsTimeouts = restClientsProperties.restClients().payments();
         return builder
                 .setConnectTimeout(Duration.ofMillis(paymentsTimeouts.connectTimeoutMs()))
                 .setReadTimeout(Duration.ofMillis(paymentsTimeouts.readTimeoutMs()))

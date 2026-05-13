@@ -23,10 +23,10 @@ Implements a real synchronous downstream timeout on the `orders-service -> payme
 ## How to trigger it
 1. Submit an order through gateway:
    ```bash
-   curl -i -X POST http://localhost:8080/orders \
+   curl -i -X POST http://localhost:8080/api/orders \
      -H 'Content-Type: application/json' \
      -H 'X-Correlation-Id: s001-test-001' \
-     -d '{"sku":"SKU-123","quantity":1,"amount":19.99,"currency":"USD"}'
+     -d '{"customerId":"customer-123","amount":19.99,"currency":"USD"}'
    ```
 2. Observe a `504 Gateway Timeout` response with `PAYMENT_TIMEOUT`, a useful message, and `correlationId` in the response body.
 

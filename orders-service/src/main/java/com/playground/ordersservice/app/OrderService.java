@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.messaging.support.MessageBuilder;
 
@@ -34,6 +35,7 @@ public class OrderService {
     private final FailureScenariosProperties failures;
     private final Counter ordersCreatedCounter;
     private final Tracer tracer;
+    private final boolean kafkaEventsEnabled;
 
     public OrderService(OrderRepository repository,
                         PaymentClient paymentClient,
@@ -41,7 +43,8 @@ public class OrderService {
                         NotificationPublisher notificationPublisher,
                         FailureScenariosProperties failures,
                         MeterRegistry meterRegistry,
-                        Tracer tracer) {
+                        Tracer tracer,
+                        @Value("${orders.events.kafka.enabled:false}") boolean kafkaEventsEnabled) {
         this.repository = repository;
         this.paymentClient = paymentClient;
         this.kafkaTemplate = kafkaTemplate;
@@ -49,6 +52,7 @@ public class OrderService {
         this.failures = failures;
         this.ordersCreatedCounter = meterRegistry.counter("orders.created");
         this.tracer = tracer;
+        this.kafkaEventsEnabled = kafkaEventsEnabled;
     }
 
     public OrderResponse create(OrderRequest request, String incomingCorrelationId) {
@@ -81,26 +85,30 @@ public class OrderService {
             order.setStatus(OrderStatus.PAYMENT_CONFIRMED);
             repository.save(order);
 
-            if (failures.isPublishKafkaFailure()) {
-                throw new IllegalStateException("Simulated kafka publish failure");
-            }
             String traceId = currentTraceId();
             String traceparent = currentTraceparent();
-            Map<String, Object> eventPayload = Map.of(
-                    "type", "OrderCreatedEvent",
-                    "orderId", orderId,
-                    "customerId", request.customerId(),
-                    "amount", request.amount(),
-                    "currency", request.currency(),
-                    "correlation_id", correlationId,
-                    "trace_id", traceId
-            );
-            kafkaTemplate.send(MessageBuilder.withPayload(eventPayload)
-                    .setHeader(KafkaHeaders.TOPIC, "order-events")
-                    .setHeader("correlation_id", correlationId)
-                    .setHeader("traceparent", traceparent)
-                    .build());
-            log.info("operation=kafka_event_published event_id=order_created_event topic=order-events order_id={}", orderId);
+            if (kafkaEventsEnabled) {
+                if (failures.isPublishKafkaFailure()) {
+                    throw new IllegalStateException("Simulated kafka publish failure");
+                }
+                Map<String, Object> eventPayload = Map.of(
+                        "type", "OrderCreatedEvent",
+                        "orderId", orderId,
+                        "customerId", request.customerId(),
+                        "amount", request.amount(),
+                        "currency", request.currency(),
+                        "correlation_id", correlationId,
+                        "trace_id", traceId
+                );
+                kafkaTemplate.send(MessageBuilder.withPayload(eventPayload)
+                        .setHeader(KafkaHeaders.TOPIC, "order-events")
+                        .setHeader("correlation_id", correlationId)
+                        .setHeader("traceparent", traceparent)
+                        .build());
+                log.info("operation=kafka_event_published event_id=order_created_event topic=order-events order_id={}", orderId);
+            } else {
+                log.info("operation=kafka_publish_skipped reason=kafka_disabled order_id={}", orderId);
+            }
 
             notificationPublisher.publishNotificationRequested(orderId, request.customerId(), correlationId, traceId, traceparent);
             ordersCreatedCounter.increment();
