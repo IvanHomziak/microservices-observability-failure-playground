@@ -12,8 +12,9 @@ Simulates missing/incorrect trace context propagation across service boundaries,
 - downstream services (`payments-service`, `inventory-service`, etc.)
 
 ## How to enable the scenario
-Placeholder:
-- Add a toggle that strips or overwrites tracing headers on outbound call path.
+- In `orders-service`, set:
+  - `orders.failures.tracing-break-propagation-to-payments=true`
+- This strips `traceparent`/`tracestate` and B3 headers from outbound HTTP calls from `orders-service` to `payments-service`.
 
 ## How to trigger it
 - Execute normal order flow while propagation break toggle is enabled.
@@ -34,4 +35,6 @@ Trace context headers not forwarded or replaced incorrectly.
 Primary issue is telemetry instrumentation/propagation, not business logic failure.
 
 ## Known limitations
-- Deterministic propagation-break switch not fully wired in first iteration.
+- Only the `orders-service -> payments-service` HTTP hop is intentionally broken.
+- Correlation ID (`X-Correlation-Id`) is still forwarded so logs can still be joined by correlation ID.
+- Kafka and Pub/Sub-like propagation remain unaffected in this scenario.

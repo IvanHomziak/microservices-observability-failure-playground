@@ -41,19 +41,21 @@ public class InventoryEventHandler {
             @Header(KafkaHeaders.RECEIVED_TOPIC) String topic,
             @Header(KafkaHeaders.RECEIVED_PARTITION) int partition,
             @Header(KafkaHeaders.OFFSET) long offset,
-            @Header(value = KafkaHeaders.RECEIVED_KEY, required = false) String key
+            @Header(value = KafkaHeaders.RECEIVED_KEY, required = false) String key,
+            @Header(value = "correlation_id", required = false) String correlationIdHeader,
+            @Header(value = "traceparent", required = false) String traceparentHeader
     ) {
         reservationAttemptCounter.increment();
 
         String eventId = asString(event.get("eventId"));
         String orderId = asString(event.get("orderId"));
-        String correlationId = asString(event.get("correlation_id"));
+        String correlationId = correlationIdHeader != null ? correlationIdHeader : asString(event.get("correlation_id"));
         String traceId = asString(event.get("trace_id"));
         String scenario = asString(event.get("failureScenario"));
 
         withContext(correlationId, traceId);
-        log.info("operation=kafka_event_consumed topic={} partition={} offset={} key={} event_id={} order_id={} correlation_id={} trace_id={}",
-                topic, partition, offset, key, eventId, orderId, correlationId, traceId);
+        log.info("operation=kafka_event_consumed topic={} partition={} offset={} key={} event_id={} order_id={} correlation_id={} trace_id={} traceparent={}",
+                topic, partition, offset, key, eventId, orderId, correlationId, traceId, traceparentHeader);
 
         try {
             if ("deserialization-error".equalsIgnoreCase(scenario)) {
