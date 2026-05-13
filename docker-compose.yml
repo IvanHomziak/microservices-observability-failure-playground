@@ -1,37 +1,136 @@
 version: '3.9'
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: orders
+    ports: ["5432:5432"]
+
+  redpanda:
+    image: redpandadata/redpanda:v24.2.15
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - '1'
+      - --memory
+      - 1G
+      - --reserve-memory
+      - 0M
+      - --node-id
+      - '0'
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092,OUTSIDE://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:9092,OUTSIDE://localhost:19092
+      - --pandaproxy-addr
+      - 0.0.0.0:8082
+      - --advertise-pandaproxy-addr
+      - redpanda:8082
+    ports: ["19092:19092","9644:9644"]
+
+  redpanda-console:
+    image: redpandadata/console:v2.7.2
+    depends_on: [redpanda]
+    ports: ["8088:8080"]
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+
   prometheus:
     image: prom/prometheus:v2.54.1
     ports: ["9090:9090"]
     volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
   grafana:
     image: grafana/grafana:11.2.0
     ports: ["3000:3000"]
-
-  tempo:
-    image: grafana/tempo:2.6.1
-    command: ["-config.file=/etc/tempo.yaml"]
-    ports: ["3200:3200", "4317:4317"]
     volumes:
-      - ./observability/tempo.yml:/etc/tempo.yaml:ro
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
 
   loki:
     image: grafana/loki:3.1.1
-    command: ["-config.file=/etc/loki/local-config.yaml"]
+    command: ["-config.file=/etc/loki/loki-config.yml"]
     ports: ["3100:3100"]
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
 
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.7.1
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
+  promtail:
+    image: grafana/promtail:3.1.1
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on: [loki]
 
-  kafka:
-    image: confluentinc/cp-kafka:7.7.1
-    depends_on: [zookeeper]
-    ports: ["9092:9092"]
-    environment:
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    ports: ["3200:3200", "4317:4317"]
+    volumes:
+      - ./observability/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.106.1
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    ports: ["4318:4318"]
+    volumes:
+      - ./observability/otel-collector/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on: [tempo]
+
+  api-gateway:
+    image: maven:3.9.9-eclipse-temurin-21
+    working_dir: /workspace
+    command: mvn spring-boot:run
+    volumes: ["./api-gateway:/workspace"]
+    ports: ["8080:8080"]
+    environment: ["APP_ENV=local"]
+
+  orders-service:
+    image: maven:3.9.9-eclipse-temurin-21
+    working_dir: /workspace
+    command: mvn spring-boot:run
+    volumes: ["./orders-service:/workspace"]
+    ports: ["8081:8081"]
+    depends_on: [postgres, redpanda, otel-collector]
+    environment: ["APP_ENV=local"]
+
+  payments-service:
+    image: maven:3.9.9-eclipse-temurin-21
+    working_dir: /workspace
+    command: mvn spring-boot:run
+    volumes: ["./payments-service:/workspace"]
+    ports: ["8082:8082"]
+    depends_on: [redpanda, otel-collector]
+    environment: ["APP_ENV=local"]
+
+  inventory-service:
+    image: maven:3.9.9-eclipse-temurin-21
+    working_dir: /workspace
+    command: mvn spring-boot:run
+    volumes: ["./inventory-service:/workspace"]
+    ports: ["8083:8083"]
+    depends_on: [redpanda, otel-collector]
+    environment: ["APP_ENV=local"]
+
+  audit-service:
+    image: maven:3.9.9-eclipse-temurin-21
+    working_dir: /workspace
+    command: mvn spring-boot:run
+    volumes: ["./audit-service:/workspace"]
+    ports: ["8084:8084"]
+    depends_on: [redpanda, otel-collector]
+    environment: ["APP_ENV=local"]
+
+  notification-service:
+    image: maven:3.9.9-eclipse-temurin-21
+    working_dir: /workspace
+    command: mvn spring-boot:run
+    volumes: ["./notification-service:/workspace"]
+    ports: ["8085:8085"]
+    depends_on: [redpanda, otel-collector]
+    environment: ["APP_ENV=local"]

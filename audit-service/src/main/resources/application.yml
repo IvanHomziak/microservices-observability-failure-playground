@@ -2,10 +2,21 @@ spring:
   application:
     name: audit-service
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: redpanda:9092
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,metrics
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://otel-collector:4317
+
+logging:
+  structured:
+    format:
+      console: logstash

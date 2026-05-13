@@ -2,7 +2,7 @@ spring:
   application:
     name: inventory-service
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: redpanda:9092
     consumer:
       group-id: inventory-service
       auto-offset-reset: earliest
@@ -20,7 +20,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,metrics
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://otel-collector:4317
 
 app:
   kafka:
@@ -30,3 +36,8 @@ app:
     retry:
       max-attempts: 3
       interval-ms: 1000
+
+logging:
+  structured:
+    format:
+      console: logstash
