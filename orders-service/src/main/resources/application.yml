@@ -15,4 +15,19 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,metrics,env
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  pattern:
+    level: "%5p [traceId:%X{traceId:-}] [spanId:%X{spanId:-}] [correlationId:%X{correlationId:-}]"
+
+orders:
+  failures:
+    payment-timeout: false
+    payment-connection-failure: false
+    payment-invalid-response: false
+    publish-kafka-failure: false
+    publish-notification-failure: false
