@@ -185,3 +185,11 @@ Milestone 1 default remains `orders.events.kafka.enabled=false` in `orders-servi
 - `orders-service` can publish audit lifecycle events with config flag `orders.audit.enabled=true|false`.
 - Docker Compose includes `audit-service` on `localhost:8085`.
 - See `docs/audit-service.md` and `scripts/verify-audit-flow.sh`.
+
+## Continuous Integration (GitHub Actions)
+A CI workflow is defined at `.github/workflows/ci.yml` and runs on pushes to `main` and on pull requests.
+
+It validates:
+- Maven test execution for `api-gateway`, `orders-service`, `payments-service`, `inventory-service`, `notification-service`, and `audit-service`.
+- Shell script syntax via `bash -n scripts/*.sh`.
+- Docker Compose syntax via `docker compose config`.
