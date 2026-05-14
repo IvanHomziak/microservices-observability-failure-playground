@@ -167,6 +167,8 @@ services:
     command: ["-config.file=/etc/loki/loki-config.yml"]
     volumes:
       - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+    ports:
+      - "3100:3100"
 
   promtail:
     profiles: ["observability", "full"]
@@ -183,6 +185,8 @@ services:
     command: ["-config.file=/etc/tempo/tempo.yml"]
     volumes:
       - ./observability/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+    ports:
+      - "3200:3200"
 
   grafana:
     profiles: ["observability", "full"]
