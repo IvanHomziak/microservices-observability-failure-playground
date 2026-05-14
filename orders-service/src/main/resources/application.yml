@@ -53,6 +53,9 @@ orders:
   events:
     kafka:
       enabled: false
+    notification:
+      enabled: true
+      url: http://localhost:8084/api/notifications/events
   failures:
     payment-timeout: false
     payment-connection-failure: false
@@ -78,3 +81,6 @@ orders:
   events:
     kafka:
       enabled: true
+    notification:
+      enabled: true
+      url: http://notification-service:8084/api/notifications/events

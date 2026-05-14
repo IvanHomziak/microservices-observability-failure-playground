@@ -21,14 +21,22 @@ public class NotificationProcessor {
             throw new IllegalArgumentException("Malformed payload: event body is null");
         }
 
-        log.info("operation=pubsub_event_consumed event_id=notification_requested order_id={} channel={} destination={} delivery_attempt={} message_id={}",
-                envelope.event().orderId(), envelope.event().channel(), envelope.event().destination(), envelope.deliveryAttempt(), envelope.messageId());
+        log.info("operation=notification_event_received event_id={} order_id={} customer_id={} correlation_id={} trace_id={} message_id={} delivery_attempt={}",
+                envelope.event().eventId(), envelope.event().orderId(), envelope.event().customerId(), envelope.event().correlationId(), envelope.event().traceId(), envelope.messageId(), envelope.deliveryAttempt());
 
-        AckResult ackResult = pubSubPort.ack(envelope.topic(), envelope.messageId());
-        if (ackResult == AckResult.TIMEOUT) {
-            log.error("operation=pubsub_processing_failed event_id=notification_ack_timeout order_id={} exception_type=IllegalStateException exception_message={}",
-                    envelope.event().orderId(), "Ack timeout for messageId=" + envelope.messageId());
-            throw new IllegalStateException("Ack timeout for messageId=" + envelope.messageId());
+        try {
+            AckResult ackResult = pubSubPort.ack(envelope.topic(), envelope.messageId());
+            if (ackResult == AckResult.TIMEOUT) {
+                log.error("operation=notification_failed event_id={} order_id={} customer_id={} correlation_id={} trace_id={} reason=ack_timeout",
+                        envelope.event().eventId(), envelope.event().orderId(), envelope.event().customerId(), envelope.event().correlationId(), envelope.event().traceId());
+                throw new IllegalStateException("Ack timeout for messageId=" + envelope.messageId());
+            }
+            log.info("operation=notification_sent event_id={} order_id={} customer_id={} correlation_id={} trace_id={} channel={}",
+                    envelope.event().eventId(), envelope.event().orderId(), envelope.event().customerId(), envelope.event().correlationId(), envelope.event().traceId(), envelope.event().channel());
+        } catch (Exception ex) {
+            log.error("operation=notification_failed event_id={} order_id={} customer_id={} correlation_id={} trace_id={} exception_type={} exception_message={}",
+                    envelope.event().eventId(), envelope.event().orderId(), envelope.event().customerId(), envelope.event().correlationId(), envelope.event().traceId(), ex.getClass().getSimpleName(), ex.getMessage());
+            throw ex;
         }
     }
 }
