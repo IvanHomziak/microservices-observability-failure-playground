@@ -1,67 +1,102 @@
 # microservices-observability-failure-playground
 
 ## Project purpose
-This repository is a deterministic playground for practicing incident diagnosis in a microservices environment. The current stable scope is intentionally small so failures are reproducible and evidence is easy to correlate across HTTP responses, logs, and service boundaries.
+This repository is a deterministic playground for practicing incident diagnosis in a microservices environment. It is designed to generate reproducible production-like failures so an AI diagnostics agent can reason over HTTP symptoms, logs, metrics, traces, and service boundaries.
 
-## Milestone 1 scope (current truth)
-Milestone 1 is the first stable vertical slice:
-- Synchronous HTTP request flow through `api-gateway -> orders-service -> payments-service`.
-- PostgreSQL persistence used by `orders-service`.
-- Two fully implemented failure scenarios: **S001 RestTemplate timeout** and **S002 payments HTTP 500**.
-- Correlation ID propagation and stable error contract for timeout failures.
+## Runtime contract
 
-## Implemented services (Milestone 1)
-- `api-gateway`
-- `orders-service`
-- `payments-service`
-- `postgres`
+### Default stack: Milestone 1
+The default command starts only the stable synchronous slice:
 
-## Deferred services/features (not part of Milestone 1 acceptance)
-- Kafka end-to-end runtime flow (producer/consumer topology is not required for this milestone).
-- Real Pub/Sub integration.
-- Full observability stack validation (Grafana/Loki/Tempo/Prometheus are present as config/assets, but not part of the required runnable contract in Milestone 1).
-- Scenarios `S002`–`S008` as fully working end-to-end implementations.
-
-## How an AI diagnostics agent should use this playground
-The intended loop for an AI diagnostics agent in Milestone 1 is:
-1. Trigger a known scenario (`SUCCESS` or `S001`).
-2. Read the API symptom from the gateway response.
-3. Pivot by `correlationId` through `api-gateway`, `orders-service`, and `payments-service` logs.
-4. Confirm service boundary behavior (`orders-service` timeout while calling `payments-service`).
-5. Produce a root-cause conclusion and confidence statement.
-
-Because S001 is deterministic, the agent can be validated against expected conclusions, not just generic anomaly detection.
-
-## Run locally
 ```bash
 docker compose up -d --build
 ```
 
-Optional teardown:
+Default services:
+- `postgres`
+- `api-gateway`
+- `orders-service`
+- `payments-service`
+
+Default stack intentionally does **not** start Kafka, notification, audit, or observability services. This keeps the first acceptance path deterministic and avoids failures caused by optional infrastructure.
+
+### Optional profiles
+Use profiles when testing broader flows:
+
+```bash
+# Kafka / Redpanda + inventory-service
+docker compose --profile kafka up -d --build
+
+# notification-service + audit-service
+docker compose --profile async up -d --build
+
+# OTel Collector + Prometheus + Grafana + Loki + Tempo
+docker compose --profile observability up -d --build
+
+# everything
+docker compose --profile full up -d --build
+```
+
+## Milestone 1 scope
+Milestone 1 is the first stable vertical slice:
+- synchronous HTTP request flow through `api-gateway -> orders-service -> payments-service`;
+- PostgreSQL persistence used by `orders-service`;
+- implemented failure scenarios: **S001 RestTemplate timeout** and **S002 payments HTTP 500**;
+- correlation ID propagation and stable error contracts.
+
+## Implemented services
+- `api-gateway`
+- `orders-service`
+- `payments-service`
+- `inventory-service`
+- `notification-service`
+- `audit-service`
+
+Only `api-gateway`, `orders-service`, `payments-service`, and `postgres` are part of the default Milestone 1 runtime contract. Other services are opt-in via profiles.
+
+## How an AI diagnostics agent should use this playground
+The intended loop for an AI diagnostics agent is:
+1. Trigger a known scenario.
+2. Read the API symptom from the gateway response.
+3. Pivot by `correlationId` through service logs.
+4. Use traces and metrics when the observability profile is enabled.
+5. Produce an evidence-based root-cause conclusion and confidence statement.
+
+Because scenarios are deterministic, the agent can be evaluated against expected conclusions, not just generic anomaly detection.
+
+## Run locally
+
+### Start default Milestone 1 stack
+```bash
+docker compose up -d --build
+```
+
+### Stop stack
 ```bash
 ./scripts/stop-local.sh
 ```
 
 ## Verify Milestone 1
 Use the deterministic verifier script:
+
 ```bash
 ./scripts/verify-milestone-1.sh
 ```
 
 This script:
-- starts the stack,
-- waits for health checks on `8080`, `8081`, `8082`,
-- verifies a successful order flow,
+- starts the default stack;
+- waits for health checks on `8080`, `8081`, `8082`;
+- verifies a successful order flow;
 - verifies S001 timeout flow returns the expected contract.
 
 ## Trigger successful flow
 ```bash
 ./scripts/trigger-successful-order.sh
 ```
+
 Endpoint used: `POST /api/orders` via `http://localhost:8080/api/orders`.
 
-### Expected SUCCESS response
-HTTP: `2xx`
+Expected HTTP: `2xx`
 
 Representative body shape:
 ```json
@@ -73,32 +108,12 @@ Representative body shape:
 }
 ```
 
-## Trigger S002 (payments HTTP 500)
-```bash
-./scripts/trigger-s002-payments-http-500.sh
-```
-
-### Expected S002 response
-HTTP: `502 Bad Gateway`
-
-Representative body shape:
-```json
-{
-  "code": "PAYMENT_5XX",
-  "message": "Payment service returned 5xx status",
-  "correlationId": "s002-...",
-  "timestamp": "2026-...Z"
-}
-```
-
-## Trigger S001 (RestTemplate timeout)
+## Trigger S001: RestTemplate timeout
 ```bash
 ./scripts/trigger-s001-resttemplate-timeout.sh
 ```
-Endpoint used: `POST /api/orders` via `http://localhost:8080/api/orders`.
 
-### Expected S001 response
-HTTP: `504 Gateway Timeout`
+Expected HTTP: `504 Gateway Timeout`
 
 Representative body shape:
 ```json
@@ -110,86 +125,114 @@ Representative body shape:
 }
 ```
 
+## Verify S002: payments HTTP 500
+S002 requires a deterministic payments-service override. Use the verifier, not only the trigger script:
+
+```bash
+./scripts/verify-s002-payments-http-500.sh
+```
+
+The verifier starts:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.s002.yml up -d --build
+```
+
+Expected HTTP: `502 Bad Gateway`
+
+Representative body shape:
+```json
+{
+  "code": "PAYMENT_5XX",
+  "message": "Payment service returned 5xx status",
+  "correlationId": "s002-...",
+  "timestamp": "2026-...Z"
+}
+```
+
+## Observability stack
+The observability stack is opt-in:
+
+```bash
+./scripts/verify-observability-stack.sh
+```
+
+This uses the `observability` profile and starts:
+- OTel Collector;
+- Prometheus;
+- Grafana;
+- Loki;
+- Promtail;
+- Tempo.
+
+Notes:
+- Grafana: `http://localhost:3000`
+- Prometheus: `http://localhost:9090`
+- Loki: `http://localhost:3100`
+- Tempo: `http://localhost:3200`
+
+Current limitation: Promtail is configured as an opt-in observability component. The compose file does not mount the host Docker socket in this stabilization PR, so log shipping behavior may need follow-up runtime verification depending on the target environment.
+
+## Kafka async order-created flow
+Kafka is opt-in:
+
+```bash
+docker compose --profile kafka up -d --build
+./scripts/verify-kafka-flow.sh
+```
+
+Runtime components:
+- `redpanda` broker on `localhost:9092`;
+- `redpanda-console` on `http://localhost:8088`;
+- `inventory-service` consuming `order-created`.
+
+Topics:
+- `order-created`
+- `order-created-dlq`
+
+## Notification flow
+Notification and audit services are opt-in through the `async` or `full` profile.
+
+Docs:
+- `docs/pubsub-style-notification-flow.md`
+- `docs/audit-service.md`
+
+Scripts:
+```bash
+./scripts/verify-notification-flow.sh
+./scripts/verify-audit-flow.sh
+```
+
+## Scenario documentation
+Scenario index:
+
+```text
+scenarios/README.md
+```
+
+Rule for implementation status:
+A scenario should be considered implemented only if it has:
+1. code path;
+2. deterministic config toggle;
+3. trigger script;
+4. verification script;
+5. scenario documentation matching actual behavior.
+
 ## AI diagnostics artifacts
 - Contract: `docs/ai-diagnostics-contract.md`
 - Evidence schema: `docs/evidence-pack-schema.md`
 - Sample agent reports: `docs/sample-agent-reports/`
 
-## Known limitations
-- `S001` depends on timeout-vs-delay timing and can vary slightly by host performance.
-- `traceId` may be empty in some response paths even when `correlationId` is present.
-- Placeholder services (`inventory-service`, `notification-service`, `audit-service`) are not part of the stable Milestone 1 E2E contract.
-- Do not treat Kafka/PubSub/observability UI assets as validated runtime features for Milestone 1 unless you explicitly enable and test them.
-
-## Next recommended milestone
-**Milestone 2 recommendation:** implement and stabilize **S002 (payments HTTP 500)** as the second deterministic synchronous failure, then add automated verification for S001 + S002 together before expanding asynchronous infrastructure.
-
-## Observability stack (local runnable)
-The repository now includes a local observability stack for `api-gateway`, `orders-service`, `payments-service`, and PostgreSQL:
-- OTel Collector receives OTLP traces from all three Spring services.
-- Prometheus scrapes `/actuator/prometheus` from each service.
-- Promtail ships container logs to Loki.
-- Tempo stores distributed traces.
-- Grafana provisions Prometheus/Loki/Tempo datasources and a `Microservices Overview` dashboard.
-
-Run verification:
-```bash
-./scripts/verify-observability-stack.sh
-```
-
-### How logs, metrics, traces connect
-- Use `correlationId` from API response to search logs in Loki.
-- From matching log lines, copy `trace_id` to inspect full trace in Tempo.
-- Use dashboard panels for request rate, error rate, p95 latency, and service health.
-
-### Prometheus targets
-- `api-gateway:8080/actuator/prometheus`
-- `orders-service:8081/actuator/prometheus`
-- `payments-service:8082/actuator/prometheus`
-
-### AI diagnostics agent workflow
-1. Trigger SUCCESS or S001.
-2. Capture `correlationId` and `traceId`.
-3. Query Loki by correlation ID.
-4. Query Tempo by trace ID.
-5. Confirm impact via Prometheus metrics and Grafana dashboard.
-
-## Kafka async order-created flow (Redpanda)
-Milestone 1 default remains `orders.events.kafka.enabled=false` in `orders-service` config. In Docker Compose we explicitly enable Kafka publishing for local async flow validation.
-
-### New runtime components
-- `redpanda` broker on `localhost:9092`
-- `redpanda-console` on `http://localhost:8088`
-- `inventory-service` consuming `order-created` with group `inventory-service`
-
-### Topics
-- `order-created`
-- `order-created-dlq`
-
-### Scripts
-```bash
-./scripts/trigger-kafka-success-flow.sh
-./scripts/verify-kafka-flow.sh
-```
-
-
-## Notification flow (Pub/Sub-style, local-first)
-- Docs: `docs/pubsub-style-notification-flow.md`
-- Trigger script: `scripts/trigger-notification-success-flow.sh`
-- Verify script: `scripts/verify-notification-flow.sh`
-
-
-## Architecture update: audit-service
-- New standalone `audit-service` (Spring Boot 3.x / Java 21 / Maven) is available for observability validation.
-- Endpoint: `POST /audit/events`.
-- `orders-service` can publish audit lifecycle events with config flag `orders.audit.enabled=true|false`.
-- Docker Compose includes `audit-service` on `localhost:8085`.
-- See `docs/audit-service.md` and `scripts/verify-audit-flow.sh`.
-
-## Continuous Integration (GitHub Actions)
+## Continuous Integration
 A CI workflow is defined at `.github/workflows/ci.yml` and runs on pushes to `main` and on pull requests.
 
 It validates:
-- Maven test execution for `api-gateway`, `orders-service`, `payments-service`, `inventory-service`, `notification-service`, and `audit-service`.
-- Shell script syntax via `bash -n scripts/*.sh`.
+- Maven tests for each service;
+- shell script syntax via `bash -n scripts/*.sh`;
 - Docker Compose syntax via `docker compose config`.
+
+## Known limitations
+- Runtime verification still depends on local Docker and Maven availability.
+- Some Maven runs in previous automated tasks were blocked by Maven Central `403` responses in the execution environment.
+- `traceId` may be empty in some response paths even when `correlationId` is present.
+- Optional profiles should be validated independently; the default stack is intentionally small.
