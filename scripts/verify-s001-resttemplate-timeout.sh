@@ -5,6 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TRIGGER_SCRIPT="${ROOT_DIR}/scripts/trigger-s001-resttemplate-timeout.sh"
 cd "$ROOT_DIR"
 
+cleanup_payments_runtime() {
+  echo "[INFO] Restoring default payments-service runtime"
+  docker compose up -d --build --force-recreate payments-service
+}
+
+trap cleanup_payments_runtime EXIT
+
 if [[ ! -x "${TRIGGER_SCRIPT}" ]]; then
   chmod +x "${TRIGGER_SCRIPT}"
 fi

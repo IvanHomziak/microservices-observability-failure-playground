@@ -21,7 +21,7 @@ Default services:
 Default stack intentionally does **not** start Kafka, notification, audit, or observability services. This keeps the first acceptance path deterministic and avoids failures caused by optional infrastructure.
 
 ### Optional profiles
-Use profiles when testing broader flows:
+Use profiles when testing broader flows. For Kafka/notification/audit verification, use the dedicated verifier scripts because they apply required compose override files that enable producer-side feature flags in `orders-service`:
 
 ```bash
 # Kafka / Redpanda + inventory-service
@@ -192,10 +192,9 @@ Notes:
 Current limitation: Promtail is configured as an opt-in observability component. The compose file does not mount the host Docker socket in this stabilization PR, so log shipping behavior may need follow-up runtime verification depending on the target environment.
 
 ## Kafka async order-created flow
-Kafka is opt-in:
+Kafka flow verification must use the verifier script, which enables `ORDERS_EVENTS_KAFKA_ENABLED=true` via `docker-compose.kafka.yml`:
 
 ```bash
-docker compose --profile kafka up -d --build
 ./scripts/verify-kafka-flow.sh
 ```
 
@@ -209,7 +208,7 @@ Topics:
 - `order-created-dlq`
 
 ## Notification flow
-Notification and audit services are opt-in through the `async` or `full` profile.
+Notification flow verification must use the verifier script, which enables `ORDERS_EVENTS_NOTIFICATION_ENABLED=true` and `ORDERS_NOTIFICATIONS_ENABLED=true` via `docker-compose.notification.yml`.
 
 Docs:
 - `docs/pubsub-style-notification-flow.md`
@@ -220,6 +219,10 @@ Scripts:
 ./scripts/verify-notification-flow.sh
 ./scripts/verify-audit-flow.sh
 ```
+
+Audit flow verification uses `docker-compose.audit.yml` to enable `ORDERS_AUDIT_ENABLED=true`.
+
+Do not rely on `docker compose --profile kafka` or `docker compose --profile async` alone for flow verification unless you also apply the corresponding override files (or equivalent environment variables).
 
 ## Scenario documentation
 Scenario index:
