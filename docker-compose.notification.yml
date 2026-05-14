@@ -1,0 +1,7 @@
+version: '3.9'
+
+services:
+  orders-service:
+    environment:
+      ORDERS_EVENTS_NOTIFICATION_ENABLED: "true"
+      ORDERS_NOTIFICATIONS_ENABLED: "true"
