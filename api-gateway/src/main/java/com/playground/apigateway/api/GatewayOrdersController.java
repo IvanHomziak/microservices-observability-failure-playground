@@ -31,13 +31,23 @@ public class GatewayOrdersController {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         String correlationId = servletRequest.getHeader("X-Correlation-Id");
+        if (correlationId == null || correlationId.isBlank()) {
+            Object requestAttribute = servletRequest.getAttribute("X-Correlation-Id");
+            if (requestAttribute instanceof String value && !value.isBlank()) {
+                correlationId = value;
+            }
+        }
         if (correlationId != null && !correlationId.isBlank()) {
             headers.set("X-Correlation-Id", correlationId);
         }
 
         HttpEntity<Map<String, Object>> payload = new HttpEntity<>(request, headers);
         try {
-            return restTemplate.postForEntity(ordersServiceUrl + "/orders", payload, Map.class);
+            ResponseEntity<Map> response = restTemplate.postForEntity(ordersServiceUrl + "/orders", payload, Map.class);
+            return ResponseEntity.status(response.getStatusCode())
+                    .headers(response.getHeaders())
+                    .header("X-Correlation-Id", correlationId)
+                    .body(response.getBody());
         } catch (HttpStatusCodeException ex) {
             HttpHeaders responseHeaders = new HttpHeaders();
             if (correlationId != null && !correlationId.isBlank()) {

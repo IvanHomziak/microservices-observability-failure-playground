@@ -16,7 +16,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex) {
-        return ResponseEntity.badRequest().body(new ApiError("VALIDATION_ERROR", "Invalid order request", correlationId(), Instant.now()));
+        return withCorrelationHeader(ResponseEntity.badRequest())
+                .body(new ApiError("VALIDATION_ERROR", "Invalid order request", correlationId(), Instant.now()));
     }
 
     @ExceptionHandler(PaymentGatewayException.class)
@@ -28,19 +29,28 @@ public class GlobalExceptionHandler {
             case "PAYMENT_INVALID_RESPONSE" -> HttpStatus.BAD_GATEWAY;
             default -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
-        return ResponseEntity.status(status).body(new ApiError(ex.getCode(), ex.getMessage(), correlationId(), Instant.now()));
+        return withCorrelationHeader(ResponseEntity.status(status))
+                .body(new ApiError(ex.getCode(), ex.getMessage(), correlationId(), Instant.now()));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGeneric(Exception ex) {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+        return withCorrelationHeader(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR))
                 .body(new ApiError("INTERNAL_ERROR", ex.getMessage(), correlationId(), Instant.now()));
     }
 
     @ExceptionHandler(NotificationPublishException.class)
     public ResponseEntity<ApiError> handleNotificationPublish(NotificationPublishException ex) {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+        return withCorrelationHeader(ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE))
                 .body(new ApiError("NOTIFICATION_PUBLISH_FAILED", ex.getMessage(), correlationId(), Instant.now()));
+    }
+
+    private ResponseEntity.BodyBuilder withCorrelationHeader(ResponseEntity.BodyBuilder builder) {
+        String correlationId = correlationId();
+        if (correlationId != null && !correlationId.isBlank()) {
+            builder.header("X-Correlation-Id", correlationId);
+        }
+        return builder;
     }
 
     private String correlationId() {

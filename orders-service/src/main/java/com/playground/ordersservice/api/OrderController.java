@@ -2,6 +2,7 @@ package com.playground.ordersservice.api;
 
 import com.playground.ordersservice.app.OrderService;
 import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,8 +19,11 @@ public class OrderController {
     }
 
     @PostMapping
-    public OrderResponse create(@Valid @RequestBody OrderRequest request,
-                                @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
-        return service.create(request, correlationId);
+    public ResponseEntity<OrderResponse> create(@Valid @RequestBody OrderRequest request,
+                                                @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
+        OrderResponse response = service.create(request, correlationId);
+        return ResponseEntity.ok()
+                .header("X-Correlation-Id", response.correlationId())
+                .body(response);
     }
 }

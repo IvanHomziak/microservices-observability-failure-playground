@@ -33,21 +33,28 @@ public class PaymentsController {
     public ResponseEntity<?> authorize(@Valid @RequestBody PaymentAuthorizationRequest request,
                                        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
                                        @RequestHeader(value = "traceparent", required = false) String traceparent) {
+        if (correlationId != null && !correlationId.isBlank()) {
+            MDC.put("correlation_id", correlationId);
+        }
         String inboundTraceparent = traceparent == null || traceparent.isBlank() ? "missing" : traceparent;
-        log.info("operation=payment_authorize_received order_id={} correlation_id={} traceparent={}",
-                request.orderId(), correlationId, inboundTraceparent);
-        if (paymentsService.shouldReturnInvalidJson()) {
-            return ResponseEntity.ok()
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body("{\"paymentId\":\"broken\",\"status\":AUTHORIZED");
-        }
-        if (failureSimulationProperties.forcedStatusCode() == 500) {
-            log.warn("operation=payment_failure_mode_triggered mode=forced-status-500 order_id={} correlation_id={} trace_id={}",
-                    request.orderId(), correlationId, MDC.get("traceId"));
-            return ResponseEntity.internalServerError().build();
-        }
+        try {
+            log.info("operation=payment_authorize_received order_id={} correlation_id={} traceparent={}",
+                    request.orderId(), correlationId, inboundTraceparent);
+            if (paymentsService.shouldReturnInvalidJson()) {
+                return ResponseEntity.ok()
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"paymentId\":\"broken\",\"status\":AUTHORIZED");
+            }
+            if (failureSimulationProperties.forcedStatusCode() == 500) {
+                log.warn("operation=payment_failure_mode_triggered mode=forced-status-500 order_id={} correlation_id={} trace_id={}",
+                        request.orderId(), correlationId, MDC.get("traceId"));
+                return ResponseEntity.internalServerError().build();
+            }
 
-        PaymentAuthorizationResponse response = paymentsService.authorize(request);
-        return ResponseEntity.ok(response);
+            PaymentAuthorizationResponse response = paymentsService.authorize(request);
+            return ResponseEntity.ok(response);
+        } finally {
+            MDC.remove("correlation_id");
+        }
     }
 }
