@@ -1,38 +1,59 @@
-# S003 — Database slow query
+# S003 — DB slow query / database latency
+
+## Status
+Implemented
 
 ## Scenario ID
 S003
 
+## Primary service
+- `orders-service`
+
 ## Description
-Simulates degraded latency caused by slow SQL query execution in an order or inventory persistence path.
+`orders-service` simulates deterministic database-operation latency during order creation by injecting a controlled delay immediately before persistence operations.
 
-## Services involved
-- `orders-service` and/or `inventory-service`
-- PostgreSQL backing store
+## Config toggles
+In `orders-service`:
+- `orders.failures.database.slow-query-enabled` (default: `false`)
+- `orders.failures.database.slow-query-delay-ms` (default: `0`)
 
-## How to enable the scenario
-Placeholder:
-- Introduce a toggle that adds artificial DB delay (e.g., `pg_sleep`) or an intentionally non-indexed query path.
+## How to trigger
+```bash
+./scripts/trigger-s003-db-slow-query.sh
+```
 
-## How to trigger it
-- Issue repeated read/write API calls that hit the affected query.
+## How to verify
+```bash
+./scripts/verify-s003-db-slow-query.sh
+```
 
-## Expected logs
-- Slow query logs or explicit latency warning statements.
-- Request processing duration noticeably above baseline.
+## Expected HTTP response contract
+- HTTP `200`
+- Standard order response body (`orderId`, `status`, `correlationId`, `traceId`)
 
-## Expected traces
-- Long DB client span(s) under affected service request traces.
+## Expected evidence
+### Logs (`orders-service`)
+- `operation=db_query_started`
+- `operation=db_query_slow_simulated`
+- `operation=db_query_completed`
+- fields include `order_id`, `correlation_id`, `duration_ms`
 
-## Expected metrics
-- Increased DB query latency histogram percentiles (p95/p99).
-- Increased API latency and potential timeout/error rates.
+### Metrics
+- `orders.database.operation.duration`
+
+### Trace
+- span around simulated DB operation:
+  - `orders.db.simulated.query`
 
 ## Expected root cause
-Inefficient/blocked database operation causing cascading request latency.
+Deterministic database operation latency in `orders-service` caused by enabled slow-query simulation settings.
 
-## What the AI diagnostics agent should conclude
-Primary bottleneck is in database interaction (query duration), not upstream network failure.
+## Expected AI conclusion
+- **primary service:** `orders-service`
+- **root cause:** database operation latency
+- **evidence:** slow-query simulation logs, elevated request latency, DB simulation span/metric
 
-## Known limitations
-- No fully wired deterministic slow-query injector in this iteration.
+## Acceptance criteria mapping
+- S003 increases latency deterministically: controlled `slow-query-delay-ms` sleep.
+- Logs show DB delay evidence: explicit `db_query_*` operation logs with duration.
+- Normal flow unaffected when disabled: no delay if toggle is `false`.

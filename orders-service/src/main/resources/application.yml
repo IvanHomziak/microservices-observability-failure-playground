@@ -60,6 +60,9 @@ orders:
     enabled: true
     publish-failure-enabled: false
   failures:
+    database:
+      slow-query-enabled: false
+      slow-query-delay-ms: 0
     payment-timeout: false
     payment-connection-failure: false
     payment-invalid-response: false
