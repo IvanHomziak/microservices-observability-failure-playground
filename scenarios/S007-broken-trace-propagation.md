@@ -4,37 +4,55 @@
 S007
 
 ## Description
-Simulates missing/incorrect trace context propagation across service boundaries, resulting in fragmented traces.
+Simulates a deterministic observability gap where distributed trace context is intentionally removed between `orders-service` and `payments-service` while the business flow can still succeed.
 
 ## Services involved
 - `api-gateway`
 - `orders-service`
-- downstream services (`payments-service`, `inventory-service`, etc.)
+- `payments-service`
 
 ## How to enable the scenario
-- In `orders-service`, set:
-  - `orders.failures.tracing-break-propagation-to-payments=true`
-- This strips `traceparent`/`tracestate` and B3 headers from outbound HTTP calls from `orders-service` to `payments-service`.
+Set this toggle in `orders-service`:
+
+- `orders.failures.tracing-break-propagation-to-payments=true`
+
+When enabled, `orders-service` removes the following outbound headers before calling `payments-service`:
+
+- `traceparent`
+- `tracestate`
+- `b3`
+- `X-B3-TraceId`
+- `X-B3-SpanId`
+- `X-B3-ParentSpanId`
+- `X-B3-Sampled`
+- `X-B3-Flags`
 
 ## How to trigger it
-- Execute normal order flow while propagation break toggle is enabled.
+- Run `./scripts/trigger-s007-broken-trace-propagation.sh`.
 
-## Expected logs
-- Requests still process, but log correlation by trace ID becomes inconsistent across services.
+## How to verify it
+- Run `./scripts/verify-s007-broken-trace-propagation.sh`.
+
+Verification expectations:
+- response still contains `correlationId`
+- `orders-service` logs include:
+  - `operation=trace_propagation_intentionally_broken`
+  - `target_service=payments-service`
+  - `correlation_id`
+  - `trace_id`
+- `payments-service` logs inbound `traceparent`; if header is absent it logs `traceparent=missing`
 
 ## Expected traces
-- Multiple disconnected traces for what should be one transaction.
+- Trace continuity is broken on the `orders-service -> payments-service` hop.
+- Separate/disconnected traces may appear in Tempo for one business transaction.
 
-## Expected metrics
-- Standard success/error metrics may remain normal; observability quality degrades.
+## Expected AI conclusion
+- issue type: observability gap
+- same correlationId across services
+- trace continuity broken between orders-service and payments-service
+- not necessarily a business failure
 
-## Expected root cause
-Trace context headers not forwarded or replaced incorrectly.
-
-## What the AI diagnostics agent should conclude
-Primary issue is telemetry instrumentation/propagation, not business logic failure.
-
-## Known limitations
-- Only the `orders-service -> payments-service` HTTP hop is intentionally broken.
-- Correlation ID (`X-Correlation-Id`) is still forwarded so logs can still be joined by correlation ID.
-- Kafka and Pub/Sub-like propagation remain unaffected in this scenario.
+## Acceptance criteria
+- normal flow preserves trace context
+- S007 breaks trace context deterministically
+- correlationId still propagates

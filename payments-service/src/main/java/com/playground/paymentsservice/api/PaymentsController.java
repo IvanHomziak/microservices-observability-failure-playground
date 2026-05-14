@@ -33,8 +33,9 @@ public class PaymentsController {
     public ResponseEntity<?> authorize(@Valid @RequestBody PaymentAuthorizationRequest request,
                                        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
                                        @RequestHeader(value = "traceparent", required = false) String traceparent) {
+        String inboundTraceparent = traceparent == null || traceparent.isBlank() ? "missing" : traceparent;
         log.info("operation=payment_authorize_received order_id={} correlation_id={} traceparent={}",
-                request.orderId(), correlationId, traceparent);
+                request.orderId(), correlationId, inboundTraceparent);
         if (paymentsService.shouldReturnInvalidJson()) {
             return ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_JSON)
