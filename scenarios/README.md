@@ -1,24 +1,34 @@
 # Failure Scenarios
 
-## Status matrix
+## Scenario index
+- [S001 — RestTemplate timeout](./S001-resttemplate-timeout.md)
+- [S002 — Payments HTTP 500](./S002-payments-http-500.md)
+- [S003 — DB slow query](./S003-db-slow-query.md)
+- [S004 — Kafka poison message](./S004-kafka-poison-message.md)
+- [S005 — Kafka consumer lag](./S005-kafka-consumer-lag.md)
+- [S006 — Pub/Sub publish failure](./S006-pubsub-publish-failure.md)
+- [S007 — Broken trace propagation](./S007-broken-trace-propagation.md)
+- [S008 — Missing correlation ID](./S008-missing-correlation-id.md)
+
+## Implementation status summary
 
 ### Implemented
-- `S001` — `S001-resttemplate-timeout.md` ✅ implemented and verified for Milestone 1.
-- `S002` — `S002-payments-http-500.md` ✅ implemented.
+- `S001` (`trigger-s001-resttemplate-timeout.sh`)
+- `S002` (`trigger-s002-payments-http-500.sh`, `verify-s002-payments-http-500.sh`)
+- `S003` (`trigger-s003-db-slow-query.sh`, `verify-s003-db-slow-query.sh`)
+- `S004` (`trigger-s004-kafka-poison-message.sh`, `verify-s004-kafka-poison-message.sh`)
+- `S005` (`trigger-s005-kafka-consumer-lag.sh`, `verify-s005-kafka-consumer-lag.sh`)
+- `S006` (`trigger-s006-pubsub-publish-failure.sh`, `verify-s006-pubsub-publish-failure.sh`)
+- `S007` (`trigger-s007-broken-trace-propagation.sh`, `verify-s007-broken-trace-propagation.sh`)
+- `S008` (`trigger-s008-missing-correlation-id.sh`, `verify-s008-missing-correlation-id.sh`)
 
-### Documented but deferred / placeholder
-- `S003` — `S003-db-slow-query.md` (documented, deferred)
-- `S004` — `S004-kafka-poison-message.md` (placeholder/deferred)
-- `S005` — `S005-kafka-consumer-lag.md` (placeholder/deferred)
-- `S006` — `S006-pubsub-publish-failure.md` (placeholder/deferred)
-- `S007` — `S007-broken-trace-propagation.md` (placeholder/deferred)
-- `S008` — `S008-missing-correlation-id.md` (placeholder/deferred)
+### Partially implemented
+- None currently documented.
 
-Milestone 1 intentionally stabilizes one end-to-end failure (S001) before expanding scenario breadth.
+### Placeholder
+- None currently documented.
 
-### Kafka runtime note
-Kafka infra for local development is now wired with Redpanda + Redpanda Console and an active `order-created` -> `inventory-service` path. Scenario docs S004/S005 can now be exercised incrementally on top of this baseline.
-
-
-### Notification flow baseline
-A local Pub/Sub-style notification path is now available (`orders-service` -> `notification-service`) without GCP credentials. Use `scripts/verify-notification-flow.sh` to validate logs and correlation propagation.
+## Consistency notes
+- All scenario docs now use one standardized structure (16 sections).
+- Endpoint for synchronous request scenarios is `POST /api/orders` at `http://localhost:8080/api/orders`.
+- Scenario docs reference exact script names and exact config property names used in code/config.

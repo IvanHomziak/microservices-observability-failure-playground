@@ -1,46 +1,68 @@
 # S002 — Payments service returns deterministic HTTP 500
 
-## Status
+## 1. Scenario ID
+S002
+
+## 2. Status
 Implemented
 
-## Purpose
-Exercise deterministic downstream 5xx handling for the synchronous request chain so diagnostics tooling can prove `payments-service` is the root cause.
+## 3. Purpose
+Exercise deterministic downstream 5xx handling so clients observe a stable upstream error contract.
 
-## Services involved
+## 4. Services involved
 - `api-gateway`
 - `orders-service`
 - `payments-service`
 
-## Config toggles
-`payments-service` uses:
+## 5. Preconditions
+- Local stack is running.
+- `payments-service` is configured to force 500.
+
+## 6. Configuration toggles
 - `failure-simulation.payments.forced-status-code=500`
 
-## How to trigger
+## 7. How to run
 ```bash
 ./scripts/trigger-s002-payments-http-500.sh
 ```
+Optional verification:
+```bash
+./scripts/verify-s002-payments-http-500.sh
+```
 
-## Expected HTTP response
-Gateway returns controlled downstream error:
-- HTTP `502 Bad Gateway`
-- JSON includes: `code`, `message`, `correlationId`, `timestamp`
-- `code` value is `PAYMENT_5XX`
+## 8. Request/event payload
+HTTP request to exact endpoint:
+- `POST /api/orders` (`http://localhost:8080/api/orders`)
 
-## Expected logs
-- `payments-service` logs
-  - `operation=payment_failure_mode_triggered`
-  - `mode=forced-status-500`
-  - `order_id`
-  - `correlation_id` (if provided)
-  - `trace_id` (if available)
-- `orders-service` maps downstream 500 to `PAYMENT_5XX`
+## 9. Expected HTTP response if applicable
+- Status: `502 Bad Gateway`
+- Body includes:
+  - `code=PAYMENT_5XX`
+  - `message`
+  - `correlationId`
+  - `timestamp`
 
-## Expected root cause
-`payments-service` was configured with forced HTTP 500 and fails authorization deterministically.
+## 10. Expected logs
+- `payments-service` emits forced failure log (for example `operation=payment_failure_mode_triggered` with forced 500 mode details).
+- `orders-service` maps downstream 500 to `PAYMENT_5XX`.
 
-## Expected AI diagnostics agent conclusion
-The client symptom (`502` with `PAYMENT_5XX`) is caused by a deterministic downstream internal error in `payments-service` (`forced-status-500`), not by transport timeout/connection failures.
+## 11. Expected metrics
+- No scenario-specific custom metric is guaranteed here.
+- General 5xx/error counters may rise if runtime metrics are enabled.
 
-## Known limitations
-- Requires stack runtime to set `failure-simulation.payments.forced-status-code=500` for `payments-service`.
-- `trace_id` field depends on tracing context propagation at runtime.
+## 12. Expected traces
+- If tracing is enabled, downstream payment span should end in error on forced 500.
+
+## 13. Expected root cause
+Configuration-driven forced 500 response in `payments-service`.
+
+## 14. What the AI diagnostics agent should conclude
+The symptom (`502` + `PAYMENT_5XX`) is caused by deterministic downstream 500 in `payments-service`, not timeout or connectivity failure.
+
+## 15. Known limitations
+- Requires `failure-simulation.payments.forced-status-code=500` in runtime config.
+- Trace visibility depends on tracing stack availability.
+
+## 16. Troubleshooting
+- Verify active property value inside `payments-service`.
+- Confirm no competing toggle (for example artificial delay) is masking expected behavior.

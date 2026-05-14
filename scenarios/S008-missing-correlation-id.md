@@ -1,52 +1,67 @@
 # S008 — Missing correlation ID
 
-## Scenario ID
+## 1. Scenario ID
 S008
 
-## Description
-Client sends `POST /api/orders` without `X-Correlation-Id`.
-The `api-gateway` must generate a correlation ID, return it in the response header, and propagate it downstream.
+## 2. Status
+Implemented
 
-## Services involved
+## 3. Purpose
+Validate that `api-gateway` generates and propagates a correlation ID when client omits `X-Correlation-Id`.
+
+## 4. Services involved
 - `api-gateway`
 - `orders-service`
 - `payments-service`
-- Kafka and notification flow (when enabled)
 
-## How to enable the scenario
-No failure toggle is required.
-Use a request that omits the `X-Correlation-Id` header.
+## 5. Preconditions
+- Local stack is running.
+- Request is sent without `X-Correlation-Id` header.
 
-## How to trigger it
+## 6. Configuration toggles
+No special failure toggle required.
+
+## 7. How to run
 ```bash
 ./scripts/trigger-s008-missing-correlation-id.sh
 ```
-
-## How to verify it
+Optional verification:
 ```bash
 ./scripts/verify-s008-missing-correlation-id.sh
 ```
 
-Verification checks:
-- request is sent **without** `X-Correlation-Id`
-- response includes generated `X-Correlation-Id` header (or `correlationId` in body)
-- same correlation ID can be searched in gateway/orders/payments logs
+## 8. Request/event payload
+HTTP request to exact endpoint:
+- `POST /api/orders` (`http://localhost:8080/api/orders`)
 
-## Expected logs
+Must omit header:
+- `X-Correlation-Id`
+
+## 9. Expected HTTP response if applicable
+- Success response (typically `200 OK`) or scenario-specific business result.
+- Response contains generated correlation identifier via header and/or body `correlationId`.
+
+## 10. Expected logs
 - `api-gateway`: `operation=correlation_id_generated correlation_id=<generated-id>`
-- `orders-service`: request and business logs include the same `correlation_id`
-- `payments-service`: authorization logs include the same `correlation_id`
-- when Kafka/notification is enabled, emitted events carry the same correlation ID in payload/headers
+- `orders-service`: same `correlation_id`
+- `payments-service`: same `correlation_id`
 
-## Expected traces
-Tracing should remain connected. This scenario specifically validates correlation-ID generation and propagation.
+## 11. Expected metrics
+- No incident-level metric degradation expected for successful propagation.
 
-## Expected metrics
-No incident-level degradation expected when propagation is correct.
+## 12. Expected traces
+- Trace continuity should remain connected if tracing is enabled.
 
-## Expected root cause (if failing)
-Missing propagation between service hops or event publication path.
+## 13. Expected root cause
+If validation fails, cause is missing correlation propagation on one or more service hops.
 
-## What the AI diagnostics agent should conclude
-- If propagated correctly: **no incident**, gateway generated a correlation ID and observability context remained intact.
-- If missing downstream: **observability propagation gap**, correlation metadata was not forwarded through all hops.
+## 14. What the AI diagnostics agent should conclude
+If IDs are consistent across services, this is not an incident; gateway correctly generated and propagated correlation context.
+
+## 15. Known limitations
+- Response format can vary by failure mode of the same request; correlation behavior should remain verifiable.
+- Trace evidence depends on tracing setup.
+
+## 16. Troubleshooting
+- Ensure request truly omits `X-Correlation-Id`.
+- Compare gateway/orders/payments logs using generated ID.

@@ -1,17 +1,40 @@
 # S001 — RestTemplate timeout between orders-service and payments-service
 
-## Scenario ID
+## 1. Scenario ID
 S001
 
-## Implemented status
-Implemented and verified in Milestone 1.
+## 2. Status
+Implemented
 
-## Endpoint and request to use
-Submit through gateway endpoint:
-- `POST /api/orders`
-- URL: `http://localhost:8080/api/orders`
+## 3. Purpose
+Validate timeout handling and error mapping when `orders-service` calls `payments-service` and the downstream response exceeds configured HTTP client timeouts.
 
-Request payload (must include `customerId`):
+## 4. Services involved
+- `api-gateway`
+- `orders-service`
+- `payments-service`
+
+## 5. Preconditions
+- Local stack is running.
+- `payments-service` delay is greater than `orders-service` read timeout.
+
+## 6. Configuration toggles
+Use these exact properties:
+- `orders.rest-clients.payments.connect-timeout-ms=500`
+- `orders.rest-clients.payments.read-timeout-ms=1000`
+- `orders.failures.payment-timeout=false`
+- `failure-simulation.payments.delay-ms=5000`
+
+## 7. How to run
+```bash
+./scripts/trigger-s001-resttemplate-timeout.sh
+```
+
+## 8. Request/event payload
+HTTP request to exact endpoint:
+- `POST /api/orders` (`http://localhost:8080/api/orders`)
+
+Payload:
 ```json
 {
   "customerId": "customer-123",
@@ -20,62 +43,43 @@ Request payload (must include `customerId`):
 }
 ```
 
-Example command:
-```bash
-curl -i -X POST http://localhost:8080/api/orders \
-  -H 'Content-Type: application/json' \
-  -H 'X-Correlation-Id: s001-test-001' \
-  -d '{"customerId":"customer-123","amount":19.99,"currency":"USD"}'
-```
+## 9. Expected HTTP response if applicable
+- Status: `504 Gateway Timeout`
+- Body includes:
+  - `code=PAYMENT_TIMEOUT`
+  - `message=Timeout while calling payment service`
+  - `correlationId`
+  - `timestamp`
 
-## Exact config values for this scenario
-`orders-service/src/main/resources/application.yml`
-- `orders.rest-clients.payments.connect-timeout-ms: 500`
-- `orders.rest-clients.payments.read-timeout-ms: 1000`
-- `orders.failures.payment-timeout: false`
+## 10. Expected logs
+Look for the same `correlationId` across services:
+- gateway request log
+- `orders-service` payment timeout mapping log
+- `payments-service` delayed authorization handling log
 
-`payments-service/src/main/resources/application.yml`
-- `failure-simulation.payments.delay-ms: 5000`
-
-These values force a real downstream timeout (not a simulated exception toggle in `orders-service`).
-
-## Expected API result
-- HTTP status: **`504 Gateway Timeout`**
-- Error code: **`PAYMENT_TIMEOUT`**
-- Expected message: `Timeout while calling payment service`
-- Response contains `correlationId`
-
-Representative response body:
-```json
-{
-  "code": "PAYMENT_TIMEOUT",
-  "message": "Timeout while calling payment service",
-  "correlationId": "s001-...",
-  "timestamp": "2026-...Z"
-}
-```
-
-## Expected root cause
-`payments-service` intentionally sleeps for `5000ms`, while `orders-service` HTTP read timeout is `1000ms`, so the downstream call times out and `orders-service` maps it to `PAYMENT_TIMEOUT` and HTTP 504.
-
-## Expected AI diagnostics conclusion
-- User symptom: `POST /api/orders` fails with HTTP 504.
-- Failing service boundary: `orders-service` calling `payments-service`.
-- Primary cause: downstream latency exceeded configured client read timeout.
-- Confidence: high, if logs and response share the same `correlationId`.
-
-## Logs to inspect by `correlationId`
-Use:
+Helpful command:
 ```bash
 ./scripts/show-logs-by-correlation-id.sh <correlationId>
 ```
 
-Or direct compose logs:
-```bash
-docker compose logs api-gateway orders-service payments-service | grep '<correlationId>'
-```
+## 11. Expected metrics
+- No dedicated scenario-specific metric is guaranteed by this scenario documentation.
+- General HTTP latency/error metrics may increase if your runtime collects them.
 
-Look for:
-- gateway request with same `correlationId`
-- `orders-service` timeout handling and `PAYMENT_TIMEOUT`
-- `payments-service` delayed authorization handling around the same request window
+## 12. Expected traces
+- If tracing is enabled in the runtime, the downstream call span from `orders-service` to `payments-service` should show timeout/error.
+
+## 13. Expected root cause
+`payments-service` intentionally delays response (`failure-simulation.payments.delay-ms`) beyond `orders-service` read timeout.
+
+## 14. What the AI diagnostics agent should conclude
+`POST /api/orders` failed with `PAYMENT_TIMEOUT` because downstream payment authorization exceeded configured client timeout; this is a deterministic latency failure, not a schema or routing issue.
+
+## 15. Known limitations
+- Requires the stack to run with the configured timeout/delay values.
+- Trace evidence depends on whether tracing infrastructure is enabled.
+
+## 16. Troubleshooting
+- Confirm effective config values in running containers.
+- Re-run with a unique `X-Correlation-Id` to isolate logs.
+- Ensure `failure-simulation.payments.forced-status-code` is not set to a conflicting mode.

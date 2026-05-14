@@ -1,70 +1,69 @@
 # S005 — Kafka consumer lag growth
 
-## Scenario ID
+## 1. Scenario ID
 S005
 
-## Status
+## 2. Status
 Implemented
 
-## Description
-Simulates deterministic consumer-side slowdown in `inventory-service` so produced `order-created` events accumulate and consumer lag/backlog becomes observable.
+## 3. Purpose
+Simulate deterministic consumer slowdown in `inventory-service` so backlog and consumer lag become observable.
 
-## Services involved
-- `orders-service` (event producer in normal flow)
-- `inventory-service` (slow consumer under simulation)
-- Redpanda / Kafka broker
-- Redpanda Console (lag inspection)
+## 4. Services involved
+- `orders-service`
+- `inventory-service`
+- `redpanda`
+- `redpanda-console`
 
-## Config toggles
-Set on `inventory-service`:
-- `inventory.failure-simulation.consumer-lag-mode-enabled` (default `false`)
-- `inventory.failure-simulation.processing-delay-ms` (default `0`)
+## 5. Preconditions
+- Local stack is running.
+- `inventory-service` lag mode is enabled with non-zero delay.
 
-Optional existing toggle (unrelated to lag mode):
-- `inventory.failure-simulation.poison-message-enabled`
+## 6. Configuration toggles
+- `inventory.failure-simulation.consumer-lag-mode-enabled=true`
+- `inventory.failure-simulation.processing-delay-ms` (for example `1200`)
 
-Example env vars:
-- `INVENTORY_FAILURE_SIMULATION_CONSUMER_LAG_MODE_ENABLED=true`
-- `INVENTORY_FAILURE_SIMULATION_PROCESSING_DELAY_MS=1200`
+## 7. How to run
+```bash
+./scripts/trigger-s005-kafka-consumer-lag.sh 40
+```
+Optional verification:
+```bash
+./scripts/verify-s005-kafka-consumer-lag.sh 25
+```
 
-## How to trigger
-1. Start stack with lag mode enabled on `inventory-service`.
-2. Run burst producer script:
-   - `./scripts/trigger-s005-kafka-consumer-lag.sh 40`
-3. Optionally run end-to-end verification:
-   - `./scripts/verify-s005-kafka-consumer-lag.sh 25`
+## 8. Request/event payload
+Burst of order-created events produced by script argument count (for example `40`).
 
-## Expected metrics
+## 9. Expected HTTP response if applicable
+Not applicable (Kafka lag scenario).
+
+## 10. Expected logs
+`inventory-service` includes delay simulation entries such as:
+- `operation=kafka_processing_delay_simulated`
+- `delay_ms`
+- event/order/correlation fields
+
+## 11. Expected metrics
 From `inventory-service`:
 - `inventory.kafka.messages.consumed`
 - `inventory.kafka.messages.failed`
 - `inventory.kafka.processing.duration`
 - `inventory.kafka.processing.delay`
 
-During S005, expect rising processing duration/delay and observable group lag while burst is being drained.
+## 12. Expected traces
+If tracing is enabled, consumer processing spans should show longer durations while lag mode is active.
 
-## Expected logs
-`inventory-service` logs include:
-- `operation=kafka_processing_delay_simulated`
-- `delay_ms`
-- `event_id`
-- `order_id`
-- `correlation_id`
+## 13. Expected root cause
+Intentional per-message processing delay in consumer path reduces throughput and creates lag.
 
-Also expect normal consume/reservation logs for same correlation ids.
+## 14. What the AI diagnostics agent should conclude
+Observed lag is caused by deterministic consumer slowdown in `inventory-service`, not by broker outage.
 
-## How to inspect lag in Redpanda Console
-Open:
-- `http://localhost:8081/topics/order-created/consumer-groups/inventory-service`
+## 15. Known limitations
+- Requires enough produced load to exceed current consumer throughput.
+- Lag visualization depends on Redpanda Console availability.
 
-While delay mode is enabled and burst is running, monitor consumer group lag/backlog on `order-created`.
-
-## Expected root cause
-Consumer throughput is intentionally reduced by processing delay; producer outpaces consumer, creating lag.
-
-## What the AI diagnostics agent should conclude
-Backlog/consumer-lag incident caused by intentional consumer slowdown in `inventory-service`, not broker outage or message schema corruption.
-
-## Determinism / safety
-- Deterministic when lag mode is enabled with non-zero delay and burst count > consumer instantaneous capacity.
-- Normal Kafka flow remains unaffected when `inventory.failure-simulation.consumer-lag-mode-enabled=false`.
+## 16. Troubleshooting
+- Verify `inventory.failure-simulation.consumer-lag-mode-enabled=true` in runtime.
+- Increase event burst count if lag is not visible.
