@@ -15,3 +15,6 @@
 - `S008` — `S008-missing-correlation-id.md` (placeholder/deferred)
 
 Milestone 1 intentionally stabilizes one end-to-end failure (S001) before expanding scenario breadth.
+
+### Kafka runtime note
+Kafka infra for local development is now wired with Redpanda + Redpanda Console and an active `order-created` -> `inventory-service` path. Scenario docs S004/S005 can now be exercised incrementally on top of this baseline.

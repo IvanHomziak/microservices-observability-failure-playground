@@ -3,8 +3,8 @@ package com.playground.inventoryservice.api;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.math.BigDecimal;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -14,15 +14,12 @@ class InventoryEventHandlerTest {
     void shouldRejectPoisonMessageScenario() {
         InventoryEventHandler handler = new InventoryEventHandler(
                 new SimpleMeterRegistry(),
-                new KafkaFailureSimulationProperties(false, 0)
+                new KafkaFailureSimulationProperties(true, 0)
         );
 
-        Map<String, Object> event = new HashMap<>();
-        event.put("eventId", "e1");
-        event.put("orderId", "o1");
-        event.put("failureScenario", "poison-message");
+        OrderCreatedEvent event = new OrderCreatedEvent("e1", "o1", "c1", BigDecimal.TEN, "USD", "corr-1", "trace-1", Instant.now());
 
-        assertThatThrownBy(() -> handler.onOrderCreated(event, "order-events", 0, 1L, null, "corr-1", null))
+        assertThatThrownBy(() -> handler.onOrderCreated(event, "order-created", 0, 1L, "corr-1", null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Simulated poison message");
     }
@@ -34,11 +31,9 @@ class InventoryEventHandlerTest {
                 new KafkaFailureSimulationProperties(false, 0)
         );
 
-        Map<String, Object> event = new HashMap<>();
-        event.put("eventId", "duplicate-event");
-        event.put("orderId", "order-1");
+        OrderCreatedEvent event = new OrderCreatedEvent("duplicate-event", "order-1", "c1", BigDecimal.ONE, "USD", "corr-1", "trace-1", Instant.now());
 
-        handler.onOrderCreated(event, "order-events", 0, 1L, null, "corr-1", null);
-        handler.onOrderCreated(event, "order-events", 0, 2L, null, "corr-1", null);
+        handler.onOrderCreated(event, "order-created", 0, 1L, "corr-1", null);
+        handler.onOrderCreated(event, "order-created", 0, 2L, "corr-1", null);
     }
 }

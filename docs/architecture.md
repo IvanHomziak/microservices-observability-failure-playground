@@ -44,3 +44,10 @@ A diagnostics agent should be able to:
 
 ## Recommended next milestone
 After maintaining S001 stability, add one additional deterministic synchronous failure (recommended: S002 payments HTTP 500) plus script-based verification, then expand asynchronous infrastructure incrementally.
+
+## Kafka order-created integration (implemented)
+- `orders-service` publishes `OrderCreatedEvent` to Kafka topic `order-created` when `orders.events.kafka.enabled=true`.
+- Event headers include `correlation_id`, `traceparent` (when available), and `event_type=OrderCreatedEvent`.
+- `inventory-service` consumes from `order-created` using group `inventory-service`.
+- Consumer uses explicit retry + dead-letter publishing to `order-created-dlq` (no infinite retry loop).
+- Idempotency is enforced in-memory by `eventId` and `orderId`; duplicates are logged and skipped.
