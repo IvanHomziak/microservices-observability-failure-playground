@@ -1,71 +1,67 @@
 # S004 — Kafka poison message
 
-## Scenario ID
+## 1. Scenario ID
 S004
 
-## Status
+## 2. Status
 Implemented
 
-## Description
-Publishes a semantically invalid `OrderCreatedEvent` (`amount=-10.00`) to `order-created`. The `inventory-service` deterministically rejects it, retries according to Kafka error handler configuration, and then routes it to `order-created-dlq`.
+## 3. Purpose
+Validate deterministic poison-message handling with retries and dead-letter routing for Kafka consumers.
 
-## Services involved
+## 4. Services involved
 - `redpanda` (Kafka broker)
-- `inventory-service` (consumer + DLQ publisher)
+- `inventory-service`
 
-## How to enable the scenario
-No additional toggle required for the deterministic invalid payload path.
+## 5. Preconditions
+- Local stack is running with Kafka path enabled.
+- `inventory-service` is consuming from topic `order-created`.
 
-Optional config knobs in `inventory-service/src/main/resources/application.yml`:
-- `app.kafka.retry.max-attempts` (default `3`)
-- `app.kafka.retry.interval-ms` (default `1000`)
-- `app.kafka.topics.order-created-dlq` (default `order-created-dlq`)
+## 6. Configuration toggles
+No special failure toggle is required for the invalid payload path.
+Relevant properties:
+- `app.kafka.retry.max-attempts`
+- `app.kafka.retry.interval-ms`
+- `app.kafka.topics.order-created-dlq`
 
-## How to trigger it
+## 7. How to run
 ```bash
 ./scripts/trigger-s004-kafka-poison-message.sh
 ```
-
-The script publishes an event with negative `amount`, which is always treated as poison.
-
-## Verification
+Optional verification:
 ```bash
 ./scripts/verify-s004-kafka-poison-message.sh
 ```
 
-The verification script:
-1. Triggers S004.
-2. Confirms `inventory-service` logged `operation=kafka_processing_failed`.
-3. Confirms `inventory-service` logged `operation=kafka_dlq_published`.
-4. Confirms `order-created-dlq` contains message/header content with the same `correlation_id`.
+## 8. Request/event payload
+Script publishes invalid `OrderCreatedEvent` with negative amount (`amount=-10.00`) to topic `order-created`.
 
-It exits non-zero if any check fails.
+## 9. Expected HTTP response if applicable
+Not applicable (Kafka event scenario).
 
-## Expected logs
+## 10. Expected logs
+`inventory-service` logs include:
 - `operation=kafka_processing_failed`
 - `operation=kafka_dlq_published`
+With metadata such as topic/partition/offset and `correlation_id`.
 
-Both logs include:
-- `topic`
-- `partition`
-- `offset`
-- `event_id` (if present)
-- `order_id` (if present)
-- `correlation_id`
-- `exception_type`
-- `exception_message`
+## 11. Expected metrics
+- No scenario-specific metric contract is guaranteed in this document.
+- Consumer failure/retry counters may increase if runtime metrics are enabled.
 
-## Expected DLQ behavior
-Topic: `order-created-dlq`
+## 12. Expected traces
+- If tracing is enabled for messaging, failed consumer processing and DLQ publish spans may appear.
 
-DLQ record preserves/contains:
-- original event payload (forwarded by dead-letter recoverer)
-- error reason headers (`error_reason`, `error_type`)
-- original location headers (`original_topic`, `original_partition`, `original_offset`)
-- `correlation_id`
+## 13. Expected root cause
+Semantic validation failure (`amount <= 0`) causes deterministic poison-message exception in `inventory-service`.
 
-## Expected root cause
-Consumer-side semantic validation fails because `amount <= 0`, causing deterministic `PoisonMessageException`.
+## 14. What the AI diagnostics agent should conclude
+A poison message on `order-created` repeatedly failed in `inventory-service` and was quarantined to `order-created-dlq` after retries.
 
-## What the AI diagnostics agent should conclude
-A poison message was consumed from `order-created`, repeatedly failed semantic validation in `inventory-service`, exhausted retries, and was successfully quarantined to `order-created-dlq` without permanently blocking consumption.
+## 15. Known limitations
+- Trace/metric visibility depends on runtime observability configuration.
+- Exact retry timing depends on configured backoff values.
+
+## 16. Troubleshooting
+- Confirm consumer is subscribed and running.
+- Confirm `app.kafka.topics.order-created-dlq` topic exists and is readable.

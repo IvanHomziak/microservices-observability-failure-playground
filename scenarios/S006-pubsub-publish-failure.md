@@ -1,68 +1,75 @@
 # S006 — Pub/Sub publish failure
 
-## Scenario ID
+## 1. Scenario ID
 S006
 
-## Status
+## 2. Status
 Implemented
 
-## Description
-Simulates deterministic failure when `orders-service` attempts to publish `NotificationRequestedEvent` to `notification-service` in the local Pub/Sub-style flow.
+## 3. Purpose
+Validate deterministic notification publish failure behavior in `orders-service` for local Pub/Sub-style flow.
 
-## Behavior decision
-**A. Notification is required**: order request fails with a controlled error response.
-
-HTTP status selected: **503 Service Unavailable** (dependency path unavailable/degraded).
-
-## Services involved
+## 4. Services involved
 - `orders-service`
 - `notification-service`
-- Local HTTP/in-memory Pub/Sub-style adapter flow (no real GCP required)
 
-## Config toggles
-Primary toggles on `orders-service`:
+## 5. Preconditions
+- Local stack is running.
+- Notifications are enabled and publish-failure simulation is enabled.
+
+## 6. Configuration toggles
+Primary properties:
 - `orders.notifications.enabled=true`
 - `orders.notifications.publish-failure-enabled=true`
 
-Backward-compatible equivalent toggle:
+Backward-compatible property:
 - `orders.failures.publish-notification-failure=true`
 
-Environment variable examples:
-- `ORDERS_NOTIFICATIONS_ENABLED=true`
-- `ORDERS_NOTIFICATIONS_PUBLISH_FAILURE_ENABLED=true`
+## 7. How to run
+```bash
+./scripts/trigger-s006-pubsub-publish-failure.sh
+```
+Optional verification:
+```bash
+./scripts/verify-s006-pubsub-publish-failure.sh
+```
 
-## How to trigger
-1. Start stack with notification publish failure enabled on `orders-service`.
-2. Run:
-   - `./scripts/trigger-s006-pubsub-publish-failure.sh`
-3. Or run verification:
-   - `./scripts/verify-s006-pubsub-publish-failure.sh`
+## 8. Request/event payload
+HTTP request to exact endpoint:
+- `POST /api/orders` (`http://localhost:8080/api/orders`)
 
-## Expected response
-`POST /api/orders` returns:
-- HTTP `503`
-- `code=NOTIFICATION_PUBLISH_FAILED`
-- error `message`
-- `correlationId`
-- `timestamp`
+## 9. Expected HTTP response if applicable
+- Status: `503 Service Unavailable`
+- Body includes:
+  - `code=NOTIFICATION_PUBLISH_FAILED`
+  - `message`
+  - `correlationId`
+  - `timestamp`
 
-## Expected logs
+## 10. Expected logs
 `orders-service` error log includes:
 - `operation=notification_publish_failed`
 - `event_id`
 - `order_id`
 - `correlation_id`
 - `trace_id`
-- `exception_type`
-- `exception_message`
 
-## Expected root cause
-Notification publish simulation is enabled, so `orders-service` intentionally fails on notification publish and treats notification as required for successful order processing.
+## 11. Expected metrics
+- No scenario-specific metric contract is guaranteed in this document.
 
-## Expected AI diagnostics agent conclusion
-Incident is a deterministic, configuration-driven notification publish failure in `orders-service` (`orders.notifications.publish-failure-enabled=true`), causing controlled HTTP 503 responses with `NOTIFICATION_PUBLISH_FAILED`; no external GCP dependency is involved.
+## 12. Expected traces
+- If tracing is enabled, publish path/error span should show failure in `orders-service` notification step.
 
-## Determinism / safety
-- Deterministic when failure toggle is enabled.
-- No real GCP required.
-- Returns to normal by setting `orders.notifications.publish-failure-enabled=false`.
+## 13. Expected root cause
+Configuration-driven publish failure simulation in `orders-service` notification publisher.
+
+## 14. What the AI diagnostics agent should conclude
+`NOTIFICATION_PUBLISH_FAILED` responses are deterministic and caused by enabled publish-failure simulation, not by external GCP Pub/Sub dependency.
+
+## 15. Known limitations
+- Local scenario does not require real GCP Pub/Sub.
+- Trace evidence depends on runtime tracing setup.
+
+## 16. Troubleshooting
+- Verify `orders.notifications.enabled` and `orders.notifications.publish-failure-enabled` values in runtime config.
+- Ensure no stale containers are running with old env values.

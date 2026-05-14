@@ -1,58 +1,62 @@
 # S007 — Broken trace propagation
 
-## Scenario ID
+## 1. Scenario ID
 S007
 
-## Description
-Simulates a deterministic observability gap where distributed trace context is intentionally removed between `orders-service` and `payments-service` while the business flow can still succeed.
+## 2. Status
+Implemented
 
-## Services involved
+## 3. Purpose
+Create a deterministic observability gap by intentionally dropping outbound trace headers from `orders-service` to `payments-service`.
+
+## 4. Services involved
 - `api-gateway`
 - `orders-service`
 - `payments-service`
 
-## How to enable the scenario
-Set this toggle in `orders-service`:
+## 5. Preconditions
+- Local stack is running.
+- Trace break toggle is enabled in `orders-service`.
 
+## 6. Configuration toggles
 - `orders.failures.tracing-break-propagation-to-payments=true`
 
-When enabled, `orders-service` removes the following outbound headers before calling `payments-service`:
+## 7. How to run
+```bash
+./scripts/trigger-s007-broken-trace-propagation.sh
+```
+Optional verification:
+```bash
+./scripts/verify-s007-broken-trace-propagation.sh
+```
 
-- `traceparent`
-- `tracestate`
-- `b3`
-- `X-B3-TraceId`
-- `X-B3-SpanId`
-- `X-B3-ParentSpanId`
-- `X-B3-Sampled`
-- `X-B3-Flags`
+## 8. Request/event payload
+HTTP request to exact endpoint:
+- `POST /api/orders` (`http://localhost:8080/api/orders`)
 
-## How to trigger it
-- Run `./scripts/trigger-s007-broken-trace-propagation.sh`.
+## 9. Expected HTTP response if applicable
+Business request can still succeed (typically `200 OK`) with `correlationId` present.
 
-## How to verify it
-- Run `./scripts/verify-s007-broken-trace-propagation.sh`.
+## 10. Expected logs
+- `orders-service`: `operation=trace_propagation_intentionally_broken target_service=payments-service`
+- `payments-service`: inbound trace header missing/changed (for example `traceparent=missing` in validation logs)
 
-Verification expectations:
-- response still contains `correlationId`
-- `orders-service` logs include:
-  - `operation=trace_propagation_intentionally_broken`
-  - `target_service=payments-service`
-  - `correlation_id`
-  - `trace_id`
-- `payments-service` logs inbound `traceparent`; if header is absent it logs `traceparent=missing`
+## 11. Expected metrics
+- No guaranteed scenario-specific metric.
 
-## Expected traces
-- Trace continuity is broken on the `orders-service -> payments-service` hop.
-- Separate/disconnected traces may appear in Tempo for one business transaction.
+## 12. Expected traces
+- Trace continuity is broken at `orders-service -> payments-service` hop (disconnected traces).
 
-## Expected AI conclusion
-- issue type: observability gap
-- same correlationId across services
-- trace continuity broken between orders-service and payments-service
-- not necessarily a business failure
+## 13. Expected root cause
+Intentional trace header removal controlled by `orders.failures.tracing-break-propagation-to-payments`.
 
-## Acceptance criteria
-- normal flow preserves trace context
-- S007 breaks trace context deterministically
-- correlationId still propagates
+## 14. What the AI diagnostics agent should conclude
+This is an observability propagation issue: business flow may succeed, but distributed trace linkage is intentionally broken.
+
+## 15. Known limitations
+- Requires tracing backend/runtime instrumentation to visualize disconnected spans.
+- Correlation ID may still provide cross-service linkage even when trace continuity is broken.
+
+## 16. Troubleshooting
+- Verify `orders.failures.tracing-break-propagation-to-payments=true` in effective config.
+- Confirm logs are searched with the same `correlationId`.
