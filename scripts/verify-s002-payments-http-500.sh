@@ -15,7 +15,9 @@ docker compose -f docker-compose.yml -f docker-compose.s002.yml up -d --build --
 wait_for_health() {
   local name="$1" url="$2"
   for _ in {1..40}; do
-    if curl -fsS "$url" >/dev/null 2>&1; then
+    local body
+    body="$(curl -sS "$url" || true)"
+    if printf %s "$body" | grep -q '"status"\s*:\s*"UP"'; then
       echo "[OK] ${name} is healthy"
       return 0
     fi

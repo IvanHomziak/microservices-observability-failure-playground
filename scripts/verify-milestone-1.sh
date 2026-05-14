@@ -87,6 +87,13 @@ run_and_verify_success() {
   echo "[VERIFY] logs command: docker compose logs -f api-gateway orders-service payments-service"
 }
 
+restore_default_payments() {
+  echo "[INFO] Restoring default payments-service runtime contract"
+  $COMPOSE_CMD up -d --build --force-recreate payments-service
+}
+
+trap restore_default_payments EXIT
+
 echo "[INFO] Starting Milestone 1 stack"
 $COMPOSE_CMD up -d --build
 
@@ -99,7 +106,7 @@ run_and_verify_success
 echo "[INFO] Running deterministic S001 verifier (payments override compose)"
 ./scripts/verify-s001-resttemplate-timeout.sh
 
-echo "[INFO] Restoring default payments-service runtime contract"
-$COMPOSE_CMD up -d --build --force-recreate payments-service
+trap - EXIT
+restore_default_payments
 
 echo "[PASS] Milestone 1 verification completed successfully"
