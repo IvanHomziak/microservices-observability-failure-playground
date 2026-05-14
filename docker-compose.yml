@@ -1,9 +1,5 @@
 version: '3.9'
 
-# First-pass reduced scope:
-# - Fully implemented and runnable: api-gateway, orders-service, payments-service, PostgreSQL.
-# - Placeholder/skeleton only: Kafka/Redpanda and full observability stack.
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -20,8 +16,10 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       OTEL_SERVICE_NAME: api-gateway
       ENVIRONMENT: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:
       - orders-service
+      - otel-collector
     ports:
       - "8080:8080"
 
@@ -32,8 +30,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orders
       OTEL_SERVICE_NAME: orders-service
       ENVIRONMENT: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:
       - postgres
+      - otel-collector
     ports:
       - "8081:8081"
 
@@ -43,5 +43,60 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       OTEL_SERVICE_NAME: payments-service
       ENVIRONMENT: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      - otel-collector
     ports:
       - "8082:8082"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.101.0
+    command: ["--config=/etc/otelcol-contrib/otel-collector.yml"]
+    volumes:
+      - ./observability/otel-collector/otel-collector.yml:/etc/otelcol-contrib/otel-collector.yml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "13133:13133"
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api-gateway
+      - orders-service
+      - payments-service
+
+  loki:
+    image: grafana/loki:3.0.0
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    command: ["-config.file=/etc/promtail/promtail-config.yml"]
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./observability/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+      - tempo

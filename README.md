@@ -118,3 +118,33 @@ Representative body shape:
 
 ## Next recommended milestone
 **Milestone 2 recommendation:** implement and stabilize **S002 (payments HTTP 500)** as the second deterministic synchronous failure, then add automated verification for S001 + S002 together before expanding asynchronous infrastructure.
+
+## Observability stack (local runnable)
+The repository now includes a local observability stack for `api-gateway`, `orders-service`, `payments-service`, and PostgreSQL:
+- OTel Collector receives OTLP traces from all three Spring services.
+- Prometheus scrapes `/actuator/prometheus` from each service.
+- Promtail ships container logs to Loki.
+- Tempo stores distributed traces.
+- Grafana provisions Prometheus/Loki/Tempo datasources and a `Microservices Overview` dashboard.
+
+Run verification:
+```bash
+./scripts/verify-observability-stack.sh
+```
+
+### How logs, metrics, traces connect
+- Use `correlationId` from API response to search logs in Loki.
+- From matching log lines, copy `trace_id` to inspect full trace in Tempo.
+- Use dashboard panels for request rate, error rate, p95 latency, and service health.
+
+### Prometheus targets
+- `api-gateway:8080/actuator/prometheus`
+- `orders-service:8081/actuator/prometheus`
+- `payments-service:8082/actuator/prometheus`
+
+### AI diagnostics agent workflow
+1. Trigger SUCCESS or S001.
+2. Capture `correlationId` and `traceId`.
+3. Query Loki by correlation ID.
+4. Query Tempo by trace ID.
+5. Confirm impact via Prometheus metrics and Grafana dashboard.
