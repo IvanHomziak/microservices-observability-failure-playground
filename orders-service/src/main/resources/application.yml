@@ -85,14 +85,16 @@ spring:
 
 orders:
   audit:
-    enabled: true
-    url: http://audit-service:8085/audit/events
+    enabled: ${ORDERS_AUDIT_ENABLED:false}
+    url: ${ORDERS_AUDIT_URL:http://audit-service:8085/audit/events}
   rest-clients:
     payments:
       base-url: http://payments-service:8082
   events:
     kafka:
-      enabled: true
+      enabled: ${ORDERS_EVENTS_KAFKA_ENABLED:false}
     notification:
-      enabled: true
-      url: http://notification-service:8084/api/notifications/events
+      enabled: ${ORDERS_EVENTS_NOTIFICATION_ENABLED:false}
+      url: ${ORDERS_EVENTS_NOTIFICATION_URL:http://notification-service:8084/api/notifications/events}
+  notifications:
+    enabled: ${ORDERS_NOTIFICATIONS_ENABLED:false}

@@ -15,8 +15,8 @@ Validate timeout handling and error mapping when `orders-service` calls `payment
 - `payments-service`
 
 ## 5. Preconditions
-- Local stack is running.
-- `payments-service` delay is greater than `orders-service` read timeout.
+- Default stack is running for success-path verification.
+- For deterministic S001 verification, run with `docker-compose.s001.yml` override so `payments-service` delay is greater than `orders-service` read timeout.
 
 ## 6. Configuration toggles
 Use these exact properties:
@@ -26,6 +26,12 @@ Use these exact properties:
 - `failure-simulation.payments.delay-ms=5000`
 
 ## 7. How to run
+Deterministic verification:
+```bash
+./scripts/verify-s001-resttemplate-timeout.sh
+```
+
+Trigger-only (no deterministic setup by itself):
 ```bash
 ./scripts/trigger-s001-resttemplate-timeout.sh
 ```
@@ -76,7 +82,8 @@ Helpful command:
 `POST /api/orders` failed with `PAYMENT_TIMEOUT` because downstream payment authorization exceeded configured client timeout; this is a deterministic latency failure, not a schema or routing issue.
 
 ## 15. Known limitations
-- Requires the stack to run with the configured timeout/delay values.
+- `trigger-s001-resttemplate-timeout.sh` only sends the request and does not enforce runtime delay configuration.
+- Deterministic behavior depends on using `docker-compose.s001.yml`.
 - Trace evidence depends on whether tracing infrastructure is enabled.
 
 ## 16. Troubleshooting

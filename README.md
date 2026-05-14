@@ -86,8 +86,9 @@ Use the deterministic verifier script:
 This script:
 - starts the default stack;
 - waits for health checks on `8080`, `8081`, `8082`;
-- verifies a successful order flow;
-- verifies S001 timeout flow returns the expected contract.
+- verifies a successful order flow on the default runtime contract;
+- runs deterministic S001 verification using `docker-compose.s001.yml`;
+- restores default `payments-service` settings after S001 verification.
 
 ## Trigger successful flow
 ```bash
@@ -113,6 +114,18 @@ Representative body shape:
 ./scripts/trigger-s001-resttemplate-timeout.sh
 ```
 
+This trigger only sends the request. For deterministic setup, use:
+
+```bash
+./scripts/verify-s001-resttemplate-timeout.sh
+```
+
+The S001 verifier starts:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.s001.yml up -d --build --force-recreate payments-service
+```
+
 Expected HTTP: `504 Gateway Timeout`
 
 Representative body shape:
@@ -135,7 +148,7 @@ S002 requires a deterministic payments-service override. Use the verifier, not o
 The verifier starts:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.s002.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.s002.yml up -d --build --force-recreate payments-service
 ```
 
 Expected HTTP: `502 Bad Gateway`
@@ -149,6 +162,11 @@ Representative body shape:
   "timestamp": "2026-...Z"
 }
 ```
+
+
+### Deterministic scenario overrides
+- `docker-compose.s001.yml` configures `payments-service` for deterministic timeout behavior (delay > orders read timeout).
+- `docker-compose.s002.yml` configures `payments-service` for deterministic HTTP 500 behavior.
 
 ## Observability stack
 The observability stack is opt-in:
