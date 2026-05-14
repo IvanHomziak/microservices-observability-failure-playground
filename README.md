@@ -7,7 +7,7 @@ This repository is a deterministic playground for practicing incident diagnosis 
 Milestone 1 is the first stable vertical slice:
 - Synchronous HTTP request flow through `api-gateway -> orders-service -> payments-service`.
 - PostgreSQL persistence used by `orders-service`.
-- One fully implemented failure scenario: **S001 RestTemplate timeout**.
+- Two fully implemented failure scenarios: **S001 RestTemplate timeout** and **S002 payments HTTP 500**.
 - Correlation ID propagation and stable error contract for timeout failures.
 
 ## Implemented services (Milestone 1)
@@ -70,6 +70,24 @@ Representative body shape:
   "status": "PAYMENT_CONFIRMED",
   "correlationId": "success-...",
   "traceId": "..."
+}
+```
+
+## Trigger S002 (payments HTTP 500)
+```bash
+./scripts/trigger-s002-payments-http-500.sh
+```
+
+### Expected S002 response
+HTTP: `502 Bad Gateway`
+
+Representative body shape:
+```json
+{
+  "code": "PAYMENT_5XX",
+  "message": "Payment service returned 5xx status",
+  "correlationId": "s002-...",
+  "timestamp": "2026-...Z"
 }
 ```
 

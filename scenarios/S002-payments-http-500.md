@@ -1,41 +1,46 @@
-# S002 — Payments service returns HTTP 500
+# S002 — Payments service returns deterministic HTTP 500
 
-## Scenario ID
-S002
+## Status
+Implemented
 
-## Description
-Documents a deterministic payment-provider 5xx failure mode where order placement fails due to `payments-service` internal error.
+## Purpose
+Exercise deterministic downstream 5xx handling for the synchronous request chain so diagnostics tooling can prove `payments-service` is the root cause.
 
 ## Services involved
 - `api-gateway`
 - `orders-service`
 - `payments-service`
 
-## How to enable the scenario
-Placeholder (first iteration):
-- Option A: add a payments failure toggle in `payments-service` to force `POST /payments/authorize` => HTTP 500.
-- Option B: use existing simulation hooks if present and mapped to 5xx behavior.
+## Config toggles
+`payments-service` uses:
+- `failure-simulation.payments.forced-status-code=500`
 
-## How to trigger it
-- Submit `POST /orders` with a normal payload through `api-gateway`.
+## How to trigger
+```bash
+./scripts/trigger-s002-payments-http-500.sh
+```
+
+## Expected HTTP response
+Gateway returns controlled downstream error:
+- HTTP `502 Bad Gateway`
+- JSON includes: `code`, `message`, `correlationId`, `timestamp`
+- `code` value is `PAYMENT_5XX`
 
 ## Expected logs
-- `payments-service` internal error log for authorization path.
-- `orders-service` maps downstream 5xx to `PAYMENT_5XX`.
-
-## Expected traces
-- Client span `orders-service -> payments-service` with error status.
-- Server span in `payments-service` marked error (500).
-
-## Expected metrics
-- `payments-service` HTTP 500 counter increases.
-- `orders-service` failed order counter / 5xx response count increases.
+- `payments-service` logs
+  - `operation=payment_failure_mode_triggered`
+  - `mode=forced-status-500`
+  - `order_id`
+  - `correlation_id` (if provided)
+  - `trace_id` (if available)
+- `orders-service` maps downstream 500 to `PAYMENT_5XX`
 
 ## Expected root cause
-`payments-service` forced internal error causes authorization failure propagated back to `orders-service`.
+`payments-service` was configured with forced HTTP 500 and fails authorization deterministically.
 
-## What the AI diagnostics agent should conclude
-Downstream dependency failure in `payments-service` (HTTP 500) is the proximate cause of failed order creation.
+## Expected AI diagnostics agent conclusion
+The client symptom (`502` with `PAYMENT_5XX`) is caused by a deterministic downstream internal error in `payments-service` (`forced-status-500`), not by transport timeout/connection failures.
 
 ## Known limitations
-- Full deterministic toggle and runbook wiring may still be incomplete.
+- Requires stack runtime to set `failure-simulation.payments.forced-status-code=500` for `payments-service`.
+- `trace_id` field depends on tracing context propagation at runtime.

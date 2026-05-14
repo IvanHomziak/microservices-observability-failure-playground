@@ -4,9 +4,9 @@
 
 ### Implemented
 - `S001` — `S001-resttemplate-timeout.md` ✅ implemented and verified for Milestone 1.
+- `S002` — `S002-payments-http-500.md` ✅ implemented.
 
 ### Documented but deferred / placeholder
-- `S002` — `S002-payments-http-500.md` (documented, deferred)
 - `S003` — `S003-db-slow-query.md` (documented, deferred)
 - `S004` — `S004-kafka-poison-message.md` (placeholder/deferred)
 - `S005` — `S005-kafka-consumer-lag.md` (placeholder/deferred)
