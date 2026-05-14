@@ -10,6 +10,7 @@ import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -55,6 +56,8 @@ public class InventoryEventHandler {
                 topic, partition, offset, eventId, orderId, correlationId, traceId, traceparentHeader);
 
         try {
+            validatePoisonMessage(event);
+
             if (eventId != null && !processedEventIds.add(eventId)) {
                 duplicateEventCounter.increment();
                 log.warn("operation=kafka_duplicate_event_detected topic={} partition={} offset={} event_id={} order_id={} correlation_id={} trace_id={}",
@@ -70,7 +73,7 @@ public class InventoryEventHandler {
             }
 
             if (failureSimulationProperties.poisonMessageEnabled()) {
-                throw new IllegalStateException("Simulated poison message");
+                throw new PoisonMessageException("Simulated poison message via feature flag");
             }
 
             if (failureSimulationProperties.processingDelayMs() > 0) {
@@ -83,9 +86,24 @@ public class InventoryEventHandler {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Interrupted while simulating processing delay", e);
+        } catch (RuntimeException e) {
+            log.error("operation=kafka_processing_failed topic={} partition={} offset={} event_id={} order_id={} correlation_id={} exception_type={} exception_message={}",
+                    topic, partition, offset, eventId, orderId, correlationId,
+                    e.getClass().getSimpleName(), e.getMessage());
+            throw e;
         } finally {
             MDC.remove("correlation_id");
             MDC.remove("trace_id");
+        }
+    }
+
+    private static void validatePoisonMessage(OrderCreatedEvent event) {
+        BigDecimal amount = event.amount();
+        if (event.orderId() == null || event.orderId().isBlank()) {
+            throw new PoisonMessageException("Invalid order event: missing orderId");
+        }
+        if (amount == null || amount.signum() <= 0) {
+            throw new PoisonMessageException("Invalid order event: amount must be greater than zero");
         }
     }
 
