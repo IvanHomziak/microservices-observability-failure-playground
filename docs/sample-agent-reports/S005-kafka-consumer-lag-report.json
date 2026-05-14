@@ -1,0 +1,20 @@
+{
+  "scenarioId": "S005",
+  "incidentSummary": "Consumer lag grew steadily because inventory-service processing throughput was intentionally reduced.",
+  "affectedServices": ["inventory-service", "redpanda", "orders-service"],
+  "rootCauseHypotheses": [
+    {
+      "cause": "consumer lag simulation added per-message processing delay",
+      "confidence": "HIGH",
+      "evidenceIds": ["log-inv-lagmode-1", "metric-kafka-lag-1", "metric-processing-duration-1"],
+      "reasoningSummary": "Lag mode flag appeared in logs and lag/processing duration metrics increased together while broker remained healthy."
+    }
+  ],
+  "performanceFindings": ["Backlog accumulated on order-created topic partitions and end-to-end event latency increased."],
+  "missingData": [],
+  "recommendedActions": [
+    "Disable inventory.failure-simulation.consumer-lag-mode-enabled after exercise.",
+    "Define autoscaling and lag-threshold alerts for sustained backlog growth."
+  ],
+  "escalationRequired": false
+}

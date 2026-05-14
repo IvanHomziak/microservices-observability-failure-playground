@@ -1,0 +1,20 @@
+{
+  "scenarioId": "S006",
+  "incidentSummary": "Order workflow returned NOTIFICATION_PUBLISH_FAILED because notification publish simulation forced a failure path.",
+  "affectedServices": ["orders-service", "notification-service"],
+  "rootCauseHypotheses": [
+    {
+      "cause": "orders notification publisher failure simulation enabled",
+      "confidence": "HIGH",
+      "evidenceIds": ["log-ord-notifyfail-1", "span-notify-publish-err-1"],
+      "reasoningSummary": "Orders logs include notification_publish_failed with matching event and correlation IDs; publish span reports error without external dependency outage signals."
+    }
+  ],
+  "performanceFindings": ["Incident primarily impacted reliability of notification side effect, not request latency."],
+  "missingData": ["No broker-level acknowledgment metric was available in this capture window."],
+  "recommendedActions": [
+    "Check orders.notifications.publish-failure-enabled and reset after testing.",
+    "Add durable outbox + retry policy to reduce user-visible publish failures."
+  ],
+  "escalationRequired": false
+}

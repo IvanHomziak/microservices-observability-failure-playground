@@ -1,0 +1,20 @@
+{
+  "scenarioId": "S003",
+  "incidentSummary": "Order API latency degraded while success rate stayed high due to simulated slow database operations in orders-service.",
+  "affectedServices": ["orders-service", "postgres", "api-gateway"],
+  "rootCauseHypotheses": [
+    {
+      "cause": "orders-service slow-query simulation introduced deterministic DB delay",
+      "confidence": "HIGH",
+      "evidenceIds": ["log-ord-dbslow-1", "span-db-query-1", "metric-db-query-duration-1"],
+      "reasoningSummary": "DB simulation log toggle was active, query span duration increased significantly, and DB-related latency metrics rose during the same window."
+    }
+  ],
+  "performanceFindings": ["Request p95/p99 increased with minimal 5xx impact, indicating a performance rather than availability incident."],
+  "missingData": [],
+  "recommendedActions": [
+    "Disable orders.failures.database.slow-query-enabled outside controlled drills.",
+    "Track query duration histogram and set latency SLO burn alerts."
+  ],
+  "escalationRequired": false
+}

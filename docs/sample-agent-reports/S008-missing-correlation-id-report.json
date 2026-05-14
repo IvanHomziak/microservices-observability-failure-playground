@@ -1,0 +1,20 @@
+{
+  "scenarioId": "S008",
+  "incidentSummary": "Incoming request omitted correlation header; gateway generated one and propagation was validated end-to-end.",
+  "affectedServices": ["api-gateway", "orders-service", "payments-service"],
+  "rootCauseHypotheses": [
+    {
+      "cause": "No platform fault confirmed; correlation fallback behavior operated as designed",
+      "confidence": "MEDIUM",
+      "evidenceIds": ["log-gw-generated-cid-1", "log-ord-cid-present-1", "log-pay-cid-present-1"],
+      "reasoningSummary": "Gateway log shows generated correlation ID and downstream services log the same value, so missing inbound header did not become an incident."
+    }
+  ],
+  "performanceFindings": ["No measurable latency or error-rate impact from ID generation path."],
+  "missingData": ["If strict client contract requires caller-supplied IDs, policy evidence is needed to classify this as non-compliant."],
+  "recommendedActions": [
+    "Keep auto-generation enabled and document behavior for external clients.",
+    "Optionally emit an audit event when upstream requests omit X-Correlation-Id."
+  ],
+  "escalationRequired": false
+}
