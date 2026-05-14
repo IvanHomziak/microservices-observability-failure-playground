@@ -32,12 +32,19 @@ public class CorrelationIdLoggingFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String correlationId = request.getHeader(CORRELATION_ID_HEADER);
+        boolean generated = false;
         if (correlationId == null || correlationId.isBlank()) {
             correlationId = UUID.randomUUID().toString();
+            generated = true;
         }
 
         response.setHeader(CORRELATION_ID_HEADER, correlationId);
+        request.setAttribute(CORRELATION_ID_HEADER, correlationId);
         MDC.put(CORRELATION_ID_KEY, correlationId);
+
+        if (generated) {
+            log.info("operation=correlation_id_generated correlation_id={}", correlationId);
+        }
 
         long startedAt = System.currentTimeMillis();
         try {
