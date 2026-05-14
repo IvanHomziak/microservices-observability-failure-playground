@@ -1,6 +1,7 @@
 package com.playground.ordersservice.api.error;
 
 import com.playground.ordersservice.infra.http.PaymentGatewayException;
+import com.playground.ordersservice.infra.events.NotificationPublishException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -34,6 +35,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleGeneric(Exception ex) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiError("INTERNAL_ERROR", ex.getMessage(), correlationId(), Instant.now()));
+    }
+
+    @ExceptionHandler(NotificationPublishException.class)
+    public ResponseEntity<ApiError> handleNotificationPublish(NotificationPublishException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ApiError("NOTIFICATION_PUBLISH_FAILED", ex.getMessage(), correlationId(), Instant.now()));
     }
 
     private String correlationId() {
