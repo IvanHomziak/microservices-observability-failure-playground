@@ -20,7 +20,7 @@ public class GatewayOrdersController {
 
     public GatewayOrdersController(
             RestTemplate restTemplate,
-            @Value("${services.orders.base-url:http://localhost:8081}") String ordersServiceUrl
+            @Value("${services.orders.base-url}") String ordersServiceUrl
     ) {
         this.restTemplate = restTemplate;
         this.ordersServiceUrl = ordersServiceUrl;
