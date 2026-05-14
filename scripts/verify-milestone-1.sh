@@ -87,29 +87,6 @@ run_and_verify_success() {
   echo "[VERIFY] logs command: docker compose logs -f api-gateway orders-service payments-service"
 }
 
-run_and_verify_s001() {
-  local output http body corr
-
-  echo "[INFO] Triggering S001 scenario"
-  output="$(./scripts/trigger-s001-resttemplate-timeout.sh 2>&1)" || fail "trigger-s001-resttemplate-timeout.sh failed to execute"
-  echo "$output"
-
-  http="$(echo "$output" | extract_http_code)"
-  body="$(echo "$output" | extract_response_body)"
-  corr="$(echo "$output" | extract_correlation_id)"
-
-  [[ -n "$http" ]] || fail "Could not parse HTTP status for S001 scenario"
-  [[ "$http" == "504" ]] || fail "S001 scenario expected 504 but got ${http}"
-
-  assert_contains "$body" 'PAYMENT_TIMEOUT' "S001 response missing PAYMENT_TIMEOUT"
-  assert_contains "$body" '"correlationId"' "S001 response missing correlationId"
-
-  echo "[VERIFY] scenario ID: S001"
-  echo "[VERIFY] correlation ID: ${corr:-not found}"
-  echo "[VERIFY] response body: ${body}"
-  echo "[VERIFY] logs command: docker compose logs -f api-gateway orders-service payments-service"
-}
-
 echo "[INFO] Starting Milestone 1 stack"
 $COMPOSE_CMD up -d --build
 
@@ -118,6 +95,11 @@ wait_for_health "orders-service" "http://localhost:8081/actuator/health"
 wait_for_health "payments-service" "http://localhost:8082/actuator/health"
 
 run_and_verify_success
-run_and_verify_s001
+
+echo "[INFO] Running deterministic S001 verifier (payments override compose)"
+./scripts/verify-s001-resttemplate-timeout.sh
+
+echo "[INFO] Restoring default payments-service runtime contract"
+$COMPOSE_CMD up -d --build --force-recreate payments-service
 
 echo "[PASS] Milestone 1 verification completed successfully"

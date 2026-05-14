@@ -9,6 +9,10 @@ TMP_HEADERS="$(mktemp)"
 TMP_BODY="$(mktemp)"
 trap 'rm -f "$TMP_HEADERS" "$TMP_BODY"' EXIT
 
+echo "[NOTE] This script only triggers S001 by sending a normal order request."
+echo "[NOTE] S001 requires payments-service delay to be greater than orders-service read timeout."
+echo "[NOTE] Use ./scripts/verify-s001-resttemplate-timeout.sh for deterministic S001 setup."
+
 HTTP_CODE=$(curl -sS -D "$TMP_HEADERS" -o "$TMP_BODY" -w "%{http_code}" \
   -X POST "$URL" \
   -H 'Content-Type: application/json' \
