@@ -14,14 +14,14 @@ import io.micrometer.tracing.Tracer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.springframework.kafka.support.KafkaHeaders;
-import org.springframework.kafka.core.KafkaTemplate;
+import com.playground.ordersservice.infra.events.OrderCreatedEvent;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -91,21 +91,26 @@ public class OrderService {
                 if (failures.isPublishKafkaFailure()) {
                     throw new IllegalStateException("Simulated kafka publish failure");
                 }
-                Map<String, Object> eventPayload = Map.of(
-                        "type", "OrderCreatedEvent",
-                        "orderId", orderId,
-                        "customerId", request.customerId(),
-                        "amount", request.amount(),
-                        "currency", request.currency(),
-                        "correlation_id", correlationId,
-                        "trace_id", traceId
+                String eventId = UUID.randomUUID().toString();
+                OrderCreatedEvent eventPayload = new OrderCreatedEvent(
+                        eventId,
+                        orderId,
+                        request.customerId(),
+                        request.amount(),
+                        request.currency(),
+                        correlationId,
+                        traceId,
+                        Instant.now()
                 );
                 kafkaTemplate.send(MessageBuilder.withPayload(eventPayload)
-                        .setHeader(KafkaHeaders.TOPIC, "order-events")
+                        .setHeader(KafkaHeaders.TOPIC, "order-created")
+                        .setHeader(KafkaHeaders.MESSAGE_KEY, orderId)
                         .setHeader("correlation_id", correlationId)
                         .setHeader("traceparent", traceparent)
+                        .setHeader("event_type", "OrderCreatedEvent")
                         .build());
-                log.info("operation=kafka_event_published event_id=order_created_event topic=order-events order_id={}", orderId);
+                log.info("operation=kafka_event_published topic=order-created event_id={} order_id={} correlation_id={} trace_id={}",
+                        eventId, orderId, correlationId, traceId);
             } else {
                 log.info("operation=kafka_publish_skipped reason=kafka_disabled order_id={}", orderId);
             }

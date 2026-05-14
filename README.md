@@ -148,3 +148,21 @@ Run verification:
 3. Query Loki by correlation ID.
 4. Query Tempo by trace ID.
 5. Confirm impact via Prometheus metrics and Grafana dashboard.
+
+## Kafka async order-created flow (Redpanda)
+Milestone 1 default remains `orders.events.kafka.enabled=false` in `orders-service` config. In Docker Compose we explicitly enable Kafka publishing for local async flow validation.
+
+### New runtime components
+- `redpanda` broker on `localhost:9092`
+- `redpanda-console` on `http://localhost:8088`
+- `inventory-service` consuming `order-created` with group `inventory-service`
+
+### Topics
+- `order-created`
+- `order-created-dlq`
+
+### Scripts
+```bash
+./scripts/trigger-kafka-success-flow.sh
+./scripts/verify-kafka-flow.sh
+```
