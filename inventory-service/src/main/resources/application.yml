@@ -49,9 +49,10 @@ app:
       max-attempts: 3
       interval-ms: 1000
 
-failure-simulation:
-  kafka:
+inventory:
+  failure-simulation:
     poison-message-enabled: false
+    consumer-lag-mode-enabled: false
     processing-delay-ms: 0
 
 ---
