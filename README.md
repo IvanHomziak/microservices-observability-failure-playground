@@ -166,3 +166,9 @@ Milestone 1 default remains `orders.events.kafka.enabled=false` in `orders-servi
 ./scripts/trigger-kafka-success-flow.sh
 ./scripts/verify-kafka-flow.sh
 ```
+
+
+## Notification flow (Pub/Sub-style, local-first)
+- Docs: `docs/pubsub-style-notification-flow.md`
+- Trigger script: `scripts/trigger-notification-success-flow.sh`
+- Verify script: `scripts/verify-notification-flow.sh`

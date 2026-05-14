@@ -56,6 +56,7 @@ services:
     depends_on:
       - orders-service
       - otel-collector
+      - notification-service
     ports:
       - "8080:8080"
 
@@ -90,6 +91,18 @@ services:
     ports:
       - "8083:8083"
 
+
+  notification-service:
+    build: ./notification-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      OTEL_SERVICE_NAME: notification-service
+      ENVIRONMENT: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      - otel-collector
+    ports:
+      - "8084:8084"
   payments-service:
     build: ./payments-service
     environment:

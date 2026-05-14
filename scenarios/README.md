@@ -18,3 +18,7 @@ Milestone 1 intentionally stabilizes one end-to-end failure (S001) before expand
 
 ### Kafka runtime note
 Kafka infra for local development is now wired with Redpanda + Redpanda Console and an active `order-created` -> `inventory-service` path. Scenario docs S004/S005 can now be exercised incrementally on top of this baseline.
+
+
+### Notification flow baseline
+A local Pub/Sub-style notification path is now available (`orders-service` -> `notification-service`) without GCP credentials. Use `scripts/verify-notification-flow.sh` to validate logs and correlation propagation.
