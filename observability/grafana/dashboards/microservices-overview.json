@@ -1,0 +1,18 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {"type":"timeseries","title":"Request rate (req/s)","gridPos":{"h":8,"w":12,"x":0,"y":0},"datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum(rate(http_server_requests_seconds_count{application=~\"api-gateway|orders-service|payments-service\"}[1m])) by (application)","legendFormat":"{{application}}"}]},
+    {"type":"timeseries","title":"Error rate (4xx/5xx)","gridPos":{"h":8,"w":12,"x":12,"y":0},"datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum(rate(http_server_requests_seconds_count{application=~\"api-gateway|orders-service|payments-service\",status=~\"4..|5..\"}[1m])) by (application)","legendFormat":"{{application}}"}]},
+    {"type":"timeseries","title":"p95 latency (ms)","gridPos":{"h":8,"w":12,"x":0,"y":8},"datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{application=~\"api-gateway|orders-service|payments-service\"}[5m])) by (le, application)) * 1000","legendFormat":"{{application}}"}]},
+    {"type":"stat","title":"Service health (up)","gridPos":{"h":8,"w":12,"x":12,"y":8},"datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum(up{job=~\"api-gateway|orders-service|payments-service\"})"}],"options":{"reduceOptions":{"calcs":["lastNotNull"],"fields":"","values":false}}}
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["microservices", "observability"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "title": "Microservices Overview",
+  "uid": "microservices-overview",
+  "version": 1
+}

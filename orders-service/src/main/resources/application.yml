@@ -23,8 +23,17 @@ management:
   tracing:
     sampling:
       probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+
+otel:
+  resource:
+    attributes: service.name=${spring.application.name},deployment.environment=${ENVIRONMENT:local}
 
 logging:
+  pattern:
+    level: "service=${spring.application.name} environment=${ENVIRONMENT:local} correlation_id=%X{correlation_id:-} trace_id=%X{traceId:-} span_id=%X{spanId:-} %5p"
   structured:
     format:
       console: ecs
