@@ -2,6 +2,7 @@ package com.playground.inventoryservice.api;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -23,6 +24,10 @@ public class InventoryEventHandler {
     private final Counter reservationSuccessCounter;
     private final Counter duplicateEventCounter;
     private final Counter idempotencyConflictCounter;
+    private final Counter kafkaMessagesConsumedCounter;
+    private final Counter kafkaMessagesFailedCounter;
+    private final Timer kafkaProcessingDurationTimer;
+    private final Timer kafkaProcessingDelayTimer;
     private final Set<String> processedEventIds = ConcurrentHashMap.newKeySet();
     private final Set<String> reservedOrderIds = ConcurrentHashMap.newKeySet();
     private final KafkaFailureSimulationProperties failureSimulationProperties;
@@ -32,6 +37,10 @@ public class InventoryEventHandler {
         this.reservationSuccessCounter = meterRegistry.counter("inventory.reservation.success");
         this.duplicateEventCounter = meterRegistry.counter("inventory.events.duplicates");
         this.idempotencyConflictCounter = meterRegistry.counter("inventory.events.idempotency_conflict");
+        this.kafkaMessagesConsumedCounter = meterRegistry.counter("inventory.kafka.messages.consumed");
+        this.kafkaMessagesFailedCounter = meterRegistry.counter("inventory.kafka.messages.failed");
+        this.kafkaProcessingDurationTimer = meterRegistry.timer("inventory.kafka.processing.duration");
+        this.kafkaProcessingDelayTimer = meterRegistry.timer("inventory.kafka.processing.delay");
         this.failureSimulationProperties = failureSimulationProperties;
     }
 
@@ -45,6 +54,8 @@ public class InventoryEventHandler {
             @Header(value = "traceparent", required = false) String traceparentHeader
     ) {
         reservationAttemptCounter.increment();
+        kafkaMessagesConsumedCounter.increment();
+        long processingStartNs = System.nanoTime();
 
         String eventId = event.eventId();
         String orderId = event.orderId();
@@ -76,8 +87,13 @@ public class InventoryEventHandler {
                 throw new PoisonMessageException("Simulated poison message via feature flag");
             }
 
-            if (failureSimulationProperties.processingDelayMs() > 0) {
-                Thread.sleep(failureSimulationProperties.processingDelayMs());
+            if (failureSimulationProperties.consumerLagModeEnabled() && failureSimulationProperties.processingDelayMs() > 0) {
+                long delayMs = failureSimulationProperties.processingDelayMs();
+                log.info("operation=kafka_processing_delay_simulated delay_ms={} event_id={} order_id={} correlation_id={}",
+                        delayMs, eventId, orderId, correlationId);
+                long delayStartNs = System.nanoTime();
+                Thread.sleep(delayMs);
+                kafkaProcessingDelayTimer.record(System.nanoTime() - delayStartNs, java.util.concurrent.TimeUnit.NANOSECONDS);
             }
 
             reservationSuccessCounter.increment();
@@ -85,13 +101,16 @@ public class InventoryEventHandler {
                     topic, partition, offset, eventId, orderId, correlationId, traceId);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            kafkaMessagesFailedCounter.increment();
             throw new RuntimeException("Interrupted while simulating processing delay", e);
         } catch (RuntimeException e) {
+            kafkaMessagesFailedCounter.increment();
             log.error("operation=kafka_processing_failed topic={} partition={} offset={} event_id={} order_id={} correlation_id={} exception_type={} exception_message={}",
                     topic, partition, offset, eventId, orderId, correlationId,
                     e.getClass().getSimpleName(), e.getMessage());
             throw e;
         } finally {
+            kafkaProcessingDurationTimer.record(System.nanoTime() - processingStartNs, java.util.concurrent.TimeUnit.NANOSECONDS);
             MDC.remove("correlation_id");
             MDC.remove("trace_id");
         }
