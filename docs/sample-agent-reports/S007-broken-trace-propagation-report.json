@@ -1,0 +1,20 @@
+{
+  "scenarioId": "S007",
+  "incidentSummary": "Business request completed, but distributed trace graph was fragmented between services.",
+  "affectedServices": ["orders-service", "payments-service", "api-gateway"],
+  "rootCauseHypotheses": [
+    {
+      "cause": "trace headers were intentionally dropped on call from orders-service to payments-service",
+      "confidence": "HIGH",
+      "evidenceIds": ["log-ord-tracebreak-1", "span-orders-root-1", "span-payments-orphan-1"],
+      "reasoningSummary": "Orders logs indicate trace propagation break mode; Tempo shows orphan payments span with no parent despite matching time and correlation context."
+    }
+  ],
+  "performanceFindings": ["No major latency regression observed; impact is observability quality and slower incident investigation."],
+  "missingData": [],
+  "recommendedActions": [
+    "Disable orders.failures.tracing-break-propagation-to-payments in normal runs.",
+    "Add propagation continuity check in CI by asserting parent-child span linkage."
+  ],
+  "escalationRequired": false
+}

@@ -110,6 +110,11 @@ Representative body shape:
 }
 ```
 
+## AI diagnostics artifacts
+- Contract: `docs/ai-diagnostics-contract.md`
+- Evidence schema: `docs/evidence-pack-schema.md`
+- Sample agent reports: `docs/sample-agent-reports/`
+
 ## Known limitations
 - `S001` depends on timeout-vs-delay timing and can vary slightly by host performance.
 - `traceId` may be empty in some response paths even when `correlationId` is present.

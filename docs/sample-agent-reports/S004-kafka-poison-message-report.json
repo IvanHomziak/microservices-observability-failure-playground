@@ -1,0 +1,20 @@
+{
+  "scenarioId": "S004",
+  "incidentSummary": "Inventory consumer repeatedly failed processing a malformed order-created event and eventually routed it to DLQ.",
+  "affectedServices": ["orders-service", "inventory-service", "redpanda"],
+  "rootCauseHypotheses": [
+    {
+      "cause": "semantic validation failure (non-positive amount) created poison message",
+      "confidence": "HIGH",
+      "evidenceIds": ["log-inv-validatefail-1", "event-dlq-publish-1", "metric-kafka-failed-1"],
+      "reasoningSummary": "Consumer logs show repeat validation exceptions for the same message key and DLQ publish event confirms quarantine after retries."
+    }
+  ],
+  "performanceFindings": ["Retry activity increased consumer processing cost for the affected partition."],
+  "missingData": [],
+  "recommendedActions": [
+    "Add producer-side schema/semantic validation to prevent invalid amount values.",
+    "Keep DLQ monitoring and include payload fingerprint to speed triage."
+  ],
+  "escalationRequired": false
+}

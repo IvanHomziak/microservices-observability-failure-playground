@@ -1,0 +1,20 @@
+{
+  "scenarioId": "S001",
+  "incidentSummary": "Order creation requests intermittently returned 504 due to downstream payment call exceeding configured client timeout.",
+  "affectedServices": ["api-gateway", "orders-service", "payments-service"],
+  "rootCauseHypotheses": [
+    {
+      "cause": "payments-service delay exceeded orders-service RestTemplate read timeout",
+      "confidence": "HIGH",
+      "evidenceIds": ["log-ord-timeout-1", "span-ord-pay-1", "metric-ord-p95-1"],
+      "reasoningSummary": "Orders emitted timeout exception, downstream span duration matched timeout threshold, and latency metrics spiked for /api/orders 504 responses."
+    }
+  ],
+  "performanceFindings": ["orders-service p95 latency rose above 3s during incident window."],
+  "missingData": [],
+  "recommendedActions": [
+    "Verify failure-simulation.payments.delay-ms is disabled in non-test environments.",
+    "Align RestTemplate timeout with SLO and add circuit-breaker fallback for payment calls."
+  ],
+  "escalationRequired": false
+}

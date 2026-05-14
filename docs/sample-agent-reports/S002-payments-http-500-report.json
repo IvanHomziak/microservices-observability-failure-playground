@@ -1,0 +1,20 @@
+{
+  "scenarioId": "S002",
+  "incidentSummary": "Gateway returned 502 (PAYMENT_5XX) because payments-service deterministically emitted HTTP 500.",
+  "affectedServices": ["api-gateway", "orders-service", "payments-service"],
+  "rootCauseHypotheses": [
+    {
+      "cause": "forced 500 mode enabled in payments-service",
+      "confidence": "HIGH",
+      "evidenceIds": ["log-pay-forced500-1", "span-pay-auth-err-1"],
+      "reasoningSummary": "Payment service logs recorded forced status code 500 and downstream authorization span ended in error while network latency remained normal."
+    }
+  ],
+  "performanceFindings": ["Error rate increased without corresponding latency spike, consistent with fast-fail 5xx responses."],
+  "missingData": [],
+  "recommendedActions": [
+    "Set failure-simulation.payments.forced-status-code=0 after test execution.",
+    "Add alerting on PAYMENT_5XX contract code at gateway."
+  ],
+  "escalationRequired": false
+}
