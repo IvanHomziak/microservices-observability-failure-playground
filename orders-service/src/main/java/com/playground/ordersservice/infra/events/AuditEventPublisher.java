@@ -20,7 +20,7 @@ public class AuditEventPublisher {
     private final boolean enabled;
 
     public AuditEventPublisher(RestTemplateBuilder restTemplateBuilder,
-                               @Value("${orders.audit.url:http://localhost:8085/audit/events}") String auditUrl,
+                               @Value("${orders.audit.url}") String auditUrl,
                                @Value("${orders.audit.enabled:false}") boolean enabled) {
         this.restTemplate = restTemplateBuilder
                 .setConnectTimeout(Duration.ofMillis(500))

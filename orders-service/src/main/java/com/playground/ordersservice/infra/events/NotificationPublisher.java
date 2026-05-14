@@ -27,7 +27,7 @@ public class NotificationPublisher {
                                  RestTemplate restTemplate,
                                  @Value("${orders.notifications.enabled:${orders.events.notification.enabled:false}}") boolean notificationEnabled,
                                  @Value("${orders.notifications.publish-failure-enabled:${orders.failures.publish-notification-failure:false}}") boolean publishFailureEnabled,
-                                 @Value("${orders.events.notification.url:http://localhost:8084/api/notifications/events}") String notificationEventsUrl) {
+                                 @Value("${orders.events.notification.url}") String notificationEventsUrl) {
         this.restTemplate = restTemplate;
         this.notificationEnabled = notificationEnabled;
         this.publishFailureEnabled = publishFailureEnabled || failures.isPublishNotificationFailure();
