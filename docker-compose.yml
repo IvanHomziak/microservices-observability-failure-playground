@@ -1,9 +1,71 @@
 version: '3.9'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orders"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
+  api-gateway:
+    build: ./api-gateway
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      OTEL_SERVICE_NAME: api-gateway
+      ENVIRONMENT: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+    depends_on:
+      - orders-service
+    ports:
+      - "8080:8080"
+
+  orders-service:
+    build: ./orders-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orders
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      OTEL_SERVICE_NAME: orders-service
+      ENVIRONMENT: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      ORDERS_EVENTS_KAFKA_ENABLED: ${ORDERS_EVENTS_KAFKA_ENABLED:-false}
+      ORDERS_AUDIT_ENABLED: ${ORDERS_AUDIT_ENABLED:-false}
+      ORDERS_EVENTS_NOTIFICATION_ENABLED: ${ORDERS_EVENTS_NOTIFICATION_ENABLED:-false}
+      ORDERS_NOTIFICATIONS_ENABLED: ${ORDERS_NOTIFICATIONS_ENABLED:-false}
+      ORDERS_FAILURES_DATABASE_SLOW_QUERY_ENABLED: ${ORDERS_FAILURES_DATABASE_SLOW_QUERY_ENABLED:-false}
+      ORDERS_FAILURES_DATABASE_SLOW_QUERY_DELAY_MS: ${ORDERS_FAILURES_DATABASE_SLOW_QUERY_DELAY_MS:-0}
+      ORDERS_FAILURES_TRACING_BREAK_PROPAGATION_TO_PAYMENTS: ${ORDERS_FAILURES_TRACING_BREAK_PROPAGATION_TO_PAYMENTS:-false}
+    depends_on:
+      - postgres
+    ports:
+      - "8081:8081"
+
+  payments-service:
+    build: ./payments-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      OTEL_SERVICE_NAME: payments-service
+      ENVIRONMENT: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      FAILURE_SIMULATION_PAYMENTS_DELAY_MS: ${FAILURE_SIMULATION_PAYMENTS_DELAY_MS:-0}
+      FAILURE_SIMULATION_PAYMENTS_FORCED_STATUS_CODE: ${FAILURE_SIMULATION_PAYMENTS_FORCED_STATUS_CODE:-0}
+      FAILURE_SIMULATION_PAYMENTS_FAILURE_RATE: ${FAILURE_SIMULATION_PAYMENTS_FAILURE_RATE:-0.0}
+      FAILURE_SIMULATION_PAYMENTS_INVALID_JSON_ENABLED: ${FAILURE_SIMULATION_PAYMENTS_INVALID_JSON_ENABLED:-false}
+      FAILURE_SIMULATION_PAYMENTS_DECLINE_ENABLED: ${FAILURE_SIMULATION_PAYMENTS_DECLINE_ENABLED:-false}
+      FAILURE_SIMULATION_PAYMENTS_TIMEOUT_ENABLED: ${FAILURE_SIMULATION_PAYMENTS_TIMEOUT_ENABLED:-false}
+    ports:
+      - "8082:8082"
 
   redpanda:
+    profiles: ["kafka", "full"]
     image: docker.redpanda.com/redpandadata/redpanda:v24.1.10
     command:
       - redpanda
@@ -30,6 +92,7 @@ services:
       - "9092:9092"
 
   redpanda-console:
+    profiles: ["kafka", "full"]
     image: docker.redpanda.com/redpandadata/console:v2.8.5
     environment:
       KAFKA_BROKERS: redpanda:9092
@@ -37,102 +100,46 @@ services:
       - redpanda
     ports:
       - "8088:8080"
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: orders
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-
-  api-gateway:
-    build: ./api-gateway
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-      OTEL_SERVICE_NAME: api-gateway
-      ENVIRONMENT: local
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-    depends_on:
-      - orders-service
-      - otel-collector
-      - notification-service
-    ports:
-      - "8080:8080"
-
-  orders-service:
-    build: ./orders-service
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orders
-      OTEL_SERVICE_NAME: orders-service
-      ENVIRONMENT: local
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-      ORDERS_EVENTS_KAFKA_ENABLED: "true"
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-      ORDERS_FAILURES_DATABASE_SLOW_QUERY_ENABLED: ${ORDERS_FAILURES_DATABASE_SLOW_QUERY_ENABLED:-false}
-      ORDERS_FAILURES_DATABASE_SLOW_QUERY_DELAY_MS: ${ORDERS_FAILURES_DATABASE_SLOW_QUERY_DELAY_MS:-0}
-    depends_on:
-      - postgres
-      - redpanda
-      - otel-collector
-    ports:
-      - "8081:8081"
-
-
-  audit-service:
-    build: ./audit-service
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-      OTEL_SERVICE_NAME: audit-service
-      ENVIRONMENT: local
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-    depends_on:
-      - redpanda
-      - otel-collector
-    ports:
-      - "8085:8085"
 
   inventory-service:
+    profiles: ["kafka", "full"]
     build: ./inventory-service
     environment:
       SPRING_PROFILES_ACTIVE: docker
       OTEL_SERVICE_NAME: inventory-service
       ENVIRONMENT: local
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     depends_on:
       - redpanda
-      - otel-collector
     ports:
       - "8083:8083"
 
-
   notification-service:
+    profiles: ["async", "full"]
     build: ./notification-service
     environment:
       SPRING_PROFILES_ACTIVE: docker
       OTEL_SERVICE_NAME: notification-service
       ENVIRONMENT: local
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-    depends_on:
-      - otel-collector
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
     ports:
       - "8084:8084"
-  payments-service:
-    build: ./payments-service
+
+  audit-service:
+    profiles: ["async", "full"]
+    build: ./audit-service
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      OTEL_SERVICE_NAME: payments-service
+      OTEL_SERVICE_NAME: audit-service
       ENVIRONMENT: local
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-    depends_on:
-      - otel-collector
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     ports:
-      - "8082:8082"
+      - "8085:8085"
 
   otel-collector:
+    profiles: ["observability", "full"]
     image: otel/opentelemetry-collector-contrib:0.101.0
     command: ["--config=/etc/otelcol-contrib/otel-collector.yml"]
     volumes:
@@ -143,6 +150,7 @@ services:
       - "13133:13133"
 
   prometheus:
+    profiles: ["observability", "full"]
     image: prom/prometheus:v2.53.0
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -154,25 +162,30 @@ services:
       - payments-service
 
   loki:
+    profiles: ["observability", "full"]
     image: grafana/loki:3.0.0
     command: ["-config.file=/etc/loki/loki-config.yml"]
     volumes:
       - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
 
   promtail:
+    profiles: ["observability", "full"]
     image: grafana/promtail:3.0.0
     command: ["-config.file=/etc/promtail/promtail-config.yml"]
     volumes:
       - ./observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
 
   tempo:
+    profiles: ["observability", "full"]
     image: grafana/tempo:2.5.0
     command: ["-config.file=/etc/tempo/tempo.yml"]
     volumes:
       - ./observability/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
 
   grafana:
+    profiles: ["observability", "full"]
     image: grafana/grafana:11.1.0
     ports:
       - "3000:3000"
