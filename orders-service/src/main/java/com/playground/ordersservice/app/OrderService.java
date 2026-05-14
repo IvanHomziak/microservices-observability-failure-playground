@@ -5,6 +5,7 @@ import com.playground.ordersservice.api.OrderResponse;
 import com.playground.ordersservice.domain.OrderEntity;
 import com.playground.ordersservice.domain.OrderRepository;
 import com.playground.ordersservice.domain.OrderStatus;
+import com.playground.ordersservice.infra.DatabaseOperationLatencySimulator;
 import com.playground.ordersservice.infra.config.FailureScenariosProperties;
 import com.playground.ordersservice.infra.events.NotificationPublisher;
 import com.playground.ordersservice.infra.http.PaymentClient;
@@ -33,6 +34,7 @@ public class OrderService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final NotificationPublisher notificationPublisher;
     private final FailureScenariosProperties failures;
+    private final DatabaseOperationLatencySimulator dbLatencySimulator;
     private final Counter ordersCreatedCounter;
     private final Tracer tracer;
     private final boolean kafkaEventsEnabled;
@@ -42,6 +44,7 @@ public class OrderService {
                         KafkaTemplate<String, Object> kafkaTemplate,
                         NotificationPublisher notificationPublisher,
                         FailureScenariosProperties failures,
+                        DatabaseOperationLatencySimulator dbLatencySimulator,
                         MeterRegistry meterRegistry,
                         Tracer tracer,
                         @Value("${orders.events.kafka.enabled:false}") boolean kafkaEventsEnabled) {
@@ -50,6 +53,7 @@ public class OrderService {
         this.kafkaTemplate = kafkaTemplate;
         this.notificationPublisher = notificationPublisher;
         this.failures = failures;
+        this.dbLatencySimulator = dbLatencySimulator;
         this.ordersCreatedCounter = meterRegistry.counter("orders.created");
         this.tracer = tracer;
         this.kafkaEventsEnabled = kafkaEventsEnabled;
@@ -70,6 +74,7 @@ public class OrderService {
             order.setCurrency(request.currency());
             order.setCreatedAt(Instant.now());
             order.setStatus(OrderStatus.PAYMENT_PENDING);
+            dbLatencySimulator.simulate(orderId);
             repository.save(order);
 
             log.info("operation=order_persisted event_id=order_created order_id={} customer_id={} amount={} currency={}", orderId, request.customerId(), request.amount(), request.currency());
@@ -77,12 +82,14 @@ public class OrderService {
             boolean approved = paymentClient.authorize(orderId, order.getAmount(), order.getCurrency());
             if (!approved) {
                 order.setStatus(OrderStatus.PAYMENT_FAILED);
+                dbLatencySimulator.simulate(orderId);
                 repository.save(order);
                 log.warn("operation=payment_authorization_failed event_id=payment_authorization_failed order_id={}", orderId);
                 return new OrderResponse(orderId, order.getStatus().name(), correlationId, currentTraceId());
             }
 
             order.setStatus(OrderStatus.PAYMENT_CONFIRMED);
+            dbLatencySimulator.simulate(orderId);
             repository.save(order);
 
             String traceId = currentTraceId();
