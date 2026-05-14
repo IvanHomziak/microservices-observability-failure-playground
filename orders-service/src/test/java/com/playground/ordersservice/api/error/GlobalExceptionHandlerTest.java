@@ -50,4 +50,21 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.correlationId").value("corr-456"));
     }
+
+    @Test
+    void payment5xxMapsToHttp502AndContainsExpectedFields() throws Exception {
+        given(orderService.create(any(), anyString())).willAnswer(invocation -> {
+            MDC.put("correlationId", invocation.getArgument(1, String.class));
+            throw new PaymentGatewayException("PAYMENT_5XX", "Payment service returned 5xx status");
+        });
+
+        mockMvc.perform(post("/orders").header("X-Correlation-Id", "corr-502")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{" + "\"customerId\":\"c1\",\"amount\":10,\"currency\":\"USD\"}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("PAYMENT_5XX"))
+                .andExpect(jsonPath("$.message").value("Payment service returned 5xx status"))
+                .andExpect(jsonPath("$.correlationId").value("corr-502"))
+                .andExpect(jsonPath("$.timestamp").exists());
+    }
 }

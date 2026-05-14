@@ -6,6 +6,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,6 +36,17 @@ public class GatewayOrdersController {
         }
 
         HttpEntity<Map<String, Object>> payload = new HttpEntity<>(request, headers);
-        return restTemplate.postForEntity(ordersServiceUrl + "/orders", payload, Map.class);
+        try {
+            return restTemplate.postForEntity(ordersServiceUrl + "/orders", payload, Map.class);
+        } catch (HttpStatusCodeException ex) {
+            HttpHeaders responseHeaders = new HttpHeaders();
+            if (correlationId != null && !correlationId.isBlank()) {
+                responseHeaders.set("X-Correlation-Id", correlationId);
+            }
+            return ResponseEntity.status(ex.getStatusCode())
+                    .headers(responseHeaders)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(ex.getResponseBodyAs(Map.class));
+        }
     }
 }

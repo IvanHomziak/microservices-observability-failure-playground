@@ -5,6 +5,7 @@ import com.playground.ordersservice.infra.config.RestClientsProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
@@ -71,5 +72,14 @@ class PaymentClientTest {
         assertThatThrownBy(() -> paymentClient.authorize("o-5", BigDecimal.ONE, "USD"))
                 .isInstanceOf(PaymentGatewayException.class)
                 .extracting("code").isEqualTo("PAYMENT_TIMEOUT");
+    }
+
+    @Test
+    void mapsHttp500ToPayment5xx() {
+        when(restTemplate.postForEntity(eq("http://payments.internal:8090/payments/authorize"), any(), eq(PaymentAuthorizationResponse.class)))
+                .thenThrow(new HttpServerErrorException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR));
+        assertThatThrownBy(() -> paymentClient.authorize("o-6", BigDecimal.ONE, "USD"))
+                .isInstanceOf(PaymentGatewayException.class)
+                .extracting("code").isEqualTo("PAYMENT_5XX");
     }
 }

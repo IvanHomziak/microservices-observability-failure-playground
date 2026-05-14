@@ -3,9 +3,11 @@ package com.playground.paymentsservice.api;
 import com.playground.paymentsservice.app.PaymentsService;
 import com.playground.paymentsservice.app.dto.PaymentAuthorizationRequest;
 import com.playground.paymentsservice.app.dto.PaymentAuthorizationResponse;
+import com.playground.paymentsservice.config.PaymentFailureSimulationProperties;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,9 +22,11 @@ public class PaymentsController {
     private static final Logger log = LoggerFactory.getLogger(PaymentsController.class);
 
     private final PaymentsService paymentsService;
+    private final PaymentFailureSimulationProperties failureSimulationProperties;
 
-    public PaymentsController(PaymentsService paymentsService) {
+    public PaymentsController(PaymentsService paymentsService, PaymentFailureSimulationProperties failureSimulationProperties) {
         this.paymentsService = paymentsService;
+        this.failureSimulationProperties = failureSimulationProperties;
     }
 
     @PostMapping(path = "/authorize", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -35,6 +39,11 @@ public class PaymentsController {
             return ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_JSON)
                     .body("{\"paymentId\":\"broken\",\"status\":AUTHORIZED");
+        }
+        if (failureSimulationProperties.forcedStatusCode() == 500) {
+            log.warn("operation=payment_failure_mode_triggered mode=forced-status-500 order_id={} correlation_id={} trace_id={}",
+                    request.orderId(), correlationId, MDC.get("traceId"));
+            return ResponseEntity.internalServerError().build();
         }
 
         PaymentAuthorizationResponse response = paymentsService.authorize(request);
