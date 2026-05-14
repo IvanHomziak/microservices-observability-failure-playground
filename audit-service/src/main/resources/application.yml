@@ -4,6 +4,10 @@ spring:
   kafka:
     bootstrap-servers: localhost:9092
 
+audit:
+  kafka:
+    enabled: false
+
 management:
   endpoints:
     web:
@@ -25,8 +29,6 @@ logging:
       service:
         name: ${spring.application.name}
         environment: ${ENVIRONMENT:local}
-      fields:
-        correlation_id: ${CORRELATION_ID:}
 
 ---
 spring:
@@ -35,3 +37,7 @@ spring:
       on-profile: docker
   kafka:
     bootstrap-servers: redpanda:9092
+
+audit:
+  kafka:
+    enabled: true

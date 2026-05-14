@@ -172,3 +172,11 @@ Milestone 1 default remains `orders.events.kafka.enabled=false` in `orders-servi
 - Docs: `docs/pubsub-style-notification-flow.md`
 - Trigger script: `scripts/trigger-notification-success-flow.sh`
 - Verify script: `scripts/verify-notification-flow.sh`
+
+
+## Architecture update: audit-service
+- New standalone `audit-service` (Spring Boot 3.x / Java 21 / Maven) is available for observability validation.
+- Endpoint: `POST /audit/events`.
+- `orders-service` can publish audit lifecycle events with config flag `orders.audit.enabled=true|false`.
+- Docker Compose includes `audit-service` on `localhost:8085`.
+- See `docs/audit-service.md` and `scripts/verify-audit-flow.sh`.

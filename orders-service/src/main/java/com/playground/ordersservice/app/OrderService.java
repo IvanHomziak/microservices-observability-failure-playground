@@ -7,6 +7,8 @@ import com.playground.ordersservice.domain.OrderRepository;
 import com.playground.ordersservice.domain.OrderStatus;
 import com.playground.ordersservice.infra.DatabaseOperationLatencySimulator;
 import com.playground.ordersservice.infra.config.FailureScenariosProperties;
+import com.playground.ordersservice.infra.events.AuditEvent;
+import com.playground.ordersservice.infra.events.AuditEventPublisher;
 import com.playground.ordersservice.infra.events.NotificationPublisher;
 import com.playground.ordersservice.infra.http.PaymentClient;
 import io.micrometer.core.instrument.Counter;
@@ -33,6 +35,7 @@ public class OrderService {
     private final PaymentClient paymentClient;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final NotificationPublisher notificationPublisher;
+    private final AuditEventPublisher auditEventPublisher;
     private final FailureScenariosProperties failures;
     private final DatabaseOperationLatencySimulator dbLatencySimulator;
     private final Counter ordersCreatedCounter;
@@ -43,6 +46,7 @@ public class OrderService {
                         PaymentClient paymentClient,
                         KafkaTemplate<String, Object> kafkaTemplate,
                         NotificationPublisher notificationPublisher,
+                        AuditEventPublisher auditEventPublisher,
                         FailureScenariosProperties failures,
                         DatabaseOperationLatencySimulator dbLatencySimulator,
                         MeterRegistry meterRegistry,
@@ -52,6 +56,7 @@ public class OrderService {
         this.paymentClient = paymentClient;
         this.kafkaTemplate = kafkaTemplate;
         this.notificationPublisher = notificationPublisher;
+        this.auditEventPublisher = auditEventPublisher;
         this.failures = failures;
         this.dbLatencySimulator = dbLatencySimulator;
         this.ordersCreatedCounter = meterRegistry.counter("orders.created");
@@ -78,6 +83,7 @@ public class OrderService {
             repository.save(order);
 
             log.info("operation=order_persisted event_id=order_created order_id={} customer_id={} amount={} currency={}", orderId, request.customerId(), request.amount(), request.currency());
+            publishAuditEvent("ORDER_CREATED", orderId, correlationId, currentTraceId());
 
             boolean approved = paymentClient.authorize(orderId, order.getAmount(), order.getCurrency());
             if (!approved) {
@@ -85,8 +91,11 @@ public class OrderService {
                 dbLatencySimulator.simulate(orderId);
                 repository.save(order);
                 log.warn("operation=payment_authorization_failed event_id=payment_authorization_failed order_id={}", orderId);
+                publishAuditEvent("PAYMENT_FAILED", orderId, correlationId, currentTraceId());
                 return new OrderResponse(orderId, order.getStatus().name(), correlationId, currentTraceId());
             }
+
+            publishAuditEvent("PAYMENT_CONFIRMED", orderId, correlationId, currentTraceId());
 
             order.setStatus(OrderStatus.PAYMENT_CONFIRMED);
             dbLatencySimulator.simulate(orderId);
@@ -131,6 +140,18 @@ public class OrderService {
             MDC.remove("correlationId");
             MDC.remove("correlation_id");
         }
+    }
+
+    private void publishAuditEvent(String eventType, String orderId, String correlationId, String traceId) {
+        auditEventPublisher.publish(new AuditEvent(
+                UUID.randomUUID().toString(),
+                eventType,
+                orderId,
+                "orders-service",
+                correlationId,
+                traceId,
+                Instant.now()
+        ));
     }
 
     private String currentTraceId() {

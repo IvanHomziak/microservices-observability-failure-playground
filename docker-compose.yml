@@ -79,6 +79,21 @@ services:
     ports:
       - "8081:8081"
 
+
+  audit-service:
+    build: ./audit-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      OTEL_SERVICE_NAME: audit-service
+      ENVIRONMENT: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    depends_on:
+      - redpanda
+      - otel-collector
+    ports:
+      - "8085:8085"
+
   inventory-service:
     build: ./inventory-service
     environment:

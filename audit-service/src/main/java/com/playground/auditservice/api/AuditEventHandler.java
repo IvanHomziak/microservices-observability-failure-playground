@@ -1,12 +1,13 @@
 package com.playground.auditservice.api;
 
+import com.playground.auditservice.domain.AuditEvent;
 import com.playground.auditservice.domain.AuditRecorder;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
-
 @Component
+@ConditionalOnProperty(prefix = "audit.kafka", name = "enabled", havingValue = "true")
 public class AuditEventHandler {
     private final AuditRecorder auditRecorder;
 
@@ -14,8 +15,8 @@ public class AuditEventHandler {
         this.auditRecorder = auditRecorder;
     }
 
-    @KafkaListener(topics = {"order-events", "payment-events", "inventory-events", "notification-events"}, groupId = "audit-service")
-    public void onAnyEvent(Map<String, Object> event) {
+    @KafkaListener(topics = "audit-events", groupId = "audit-service")
+    public void onAuditEvent(AuditEvent event) {
         auditRecorder.record(event, "kafka");
     }
 }

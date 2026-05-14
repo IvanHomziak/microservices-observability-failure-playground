@@ -45,6 +45,9 @@ logging:
         correlation_id: ${CORRELATION_ID:}
 
 orders:
+  audit:
+    enabled: false
+    url: http://localhost:8085/audit/events
   rest-clients:
     payments:
       base-url: http://localhost:8082
@@ -81,6 +84,9 @@ spring:
     bootstrap-servers: redpanda:9092
 
 orders:
+  audit:
+    enabled: true
+    url: http://audit-service:8085/audit/events
   rest-clients:
     payments:
       base-url: http://payments-service:8082
