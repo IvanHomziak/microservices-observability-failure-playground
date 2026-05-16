@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-correlation_id="s004-poison-$(date +%s)"
-event_id="evt-s004-$(date +%s)"
+correlation_id="s004-$(date +%s)-$RANDOM"
 
-payload=$(cat <<JSON
-{"eventId":"${event_id}","orderId":"ord-s004-poison","customerId":"cust-s004","amount":-10.00,"currency":"USD","correlationId":"${correlation_id}","traceId":"trace-s004","createdAt":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
-JSON
-)
+response_file="$(mktemp)"
+http_status=$(curl -sS -o "$response_file" -w '%{http_code}' -X POST "http://localhost:8080/api/orders" \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-Id: ${correlation_id}" \
+  -d '{"customerId":"cust-s004-001","amount":19.99,"currency":"USD"}')
+response_body="$(cat "$response_file")"
+rm -f "$response_file"
 
-printf '%s\n' "${payload}" | docker compose exec -T redpanda rpk topic produce order-created -H "correlation_id:${correlation_id}" >/dev/null
-
+echo "info=deterministic_runtime_is_managed_by_verify_script"
 echo "correlation_id=${correlation_id}"
-echo "event_id=${event_id}"
+echo "http_status=${http_status}"
+echo "response_body=${response_body}"

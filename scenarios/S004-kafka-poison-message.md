@@ -4,64 +4,73 @@
 S004
 
 ## 2. Status
-Implemented
+Implemented by this PR
 
 ## 3. Purpose
-Validate deterministic poison-message handling with retries and dead-letter routing for Kafka consumers.
+Validate deterministic poison-message handling in the `inventory-service` Kafka consumer.
 
-## 4. Services involved
-- `redpanda` (Kafka broker)
+## 4. Runtime override
+- Override: `docker-compose.s004.yml`
+- Profile: `kafka`
+
+## 5. Services involved
+- `api-gateway`
+- `orders-service`
+- `payments-service`
 - `inventory-service`
+- `redpanda`
 
-## 5. Preconditions
-- Local stack is running with Kafka path enabled.
-- `inventory-service` is consuming from topic `order-created`.
+## 6. Deterministic configuration
+This scenario enables deterministic poison-mode behavior for Kafka consumption.
 
-## 6. Configuration toggles
-No special failure toggle is required for the invalid payload path.
-Relevant properties:
-- `app.kafka.retry.max-attempts`
-- `app.kafka.retry.interval-ms`
-- `app.kafka.topics.order-created-dlq`
+- `orders-service`: `ORDERS_EVENTS_KAFKA_ENABLED=true`
+- `inventory-service`: `INVENTORY_FAILURE_SIMULATION_POISON_MESSAGE_ENABLED=true`
 
-## 7. How to run
+## 7. Trigger script
 ```bash
 ./scripts/trigger-s004-kafka-poison-message.sh
 ```
-Optional verification:
+
+The trigger sends `POST /api/orders` through `api-gateway` and prints:
+- `correlation_id` (prefixed with `s004-`)
+- `http_status`
+- `response_body`
+
+Deterministic environment setup is handled by the verify script.
+
+## 8. Verify script
 ```bash
 ./scripts/verify-s004-kafka-poison-message.sh
 ```
 
-## 8. Request/event payload
-Script publishes invalid `OrderCreatedEvent` with negative amount (`amount=-10.00`) to topic `order-created`.
+The verifier:
+1. Starts runtime with:
+   - `docker compose -f docker-compose.yml -f docker-compose.s004.yml --profile kafka up -d --build --force-recreate`
+2. Waits for health of:
+   - `api-gateway`, `orders-service`, `payments-service`, `inventory-service`
+3. Runs trigger script and extracts `correlation_id`
+4. Asserts:
+   - order API response status is `2xx`
+   - `orders-service` has `operation=kafka_event_published`
+   - `inventory-service` has `operation=kafka_processing_failed`
+   - `inventory-service` has `PoisonMessageException` or `Simulated poison message`
+   - DLQ evidence via `operation=kafka_dlq_published` and/or `order-created-dlq` topic sample
+5. Prints debug command:
+   - `docker compose logs -f orders-service inventory-service redpanda`
+6. Restores default `orders-service` runtime on exit.
 
-## 9. Expected HTTP response if applicable
-Not applicable (Kafka event scenario).
+## 9. Expected logs
+For matching `correlation_id`:
+- `orders-service`: `operation=kafka_event_published`
+- `inventory-service`: `operation=kafka_processing_failed`
+- `inventory-service`: `PoisonMessageException` or `Simulated poison message`
+- Optional/expected when DLQ path executes: `operation=kafka_dlq_published`
 
-## 10. Expected logs
-`inventory-service` logs include:
-- `operation=kafka_processing_failed`
-- `operation=kafka_dlq_published`
-With metadata such as topic/partition/offset and `correlation_id`.
+## 10. Expected DLQ behavior
+If DLQ is functioning, failed records are published to `order-created-dlq` after retries.
 
-## 11. Expected metrics
-- No scenario-specific metric contract is guaranteed in this document.
-- Consumer failure/retry counters may increase if runtime metrics are enabled.
+## 11. Known limitations
+DLQ assertion may be log-format/runtime dependent; verifier falls back to sampling DLQ topic content.
 
-## 12. Expected traces
-- If tracing is enabled for messaging, failed consumer processing and DLQ publish spans may appear.
-
-## 13. Expected root cause
-Semantic validation failure (`amount <= 0`) causes deterministic poison-message exception in `inventory-service`.
-
-## 14. What the AI diagnostics agent should conclude
-A poison message on `order-created` repeatedly failed in `inventory-service` and was quarantined to `order-created-dlq` after retries.
-
-## 15. Known limitations
-- Trace/metric visibility depends on runtime observability configuration.
-- Exact retry timing depends on configured backoff values.
-
-## 16. Troubleshooting
-- Confirm consumer is subscribed and running.
-- Confirm `app.kafka.topics.order-created-dlq` topic exists and is readable.
+## 12. AI diagnostics expected conclusion
+Root cause is deterministic poison message handling in inventory-service Kafka consumer.
