@@ -11,9 +11,7 @@ http_status="$(curl -sS -o "${response_file}" -w '%{http_code}' \
   -H "X-Correlation-Id: ${correlation_id}" \
   -d "${payload}")"
 
-printf 'HTTP status: %s\n' "${http_status}"
 printf 'Correlation ID: %s\n' "${correlation_id}"
+printf 'HTTP status: %s\n' "${http_status}"
 printf 'Response body: %s\n' "$(cat "${response_file}")"
 rm -f "${response_file}"
-
-echo "Hint: ensure orders-service has ORDERS_NOTIFICATIONS_PUBLISH_FAILURE_ENABLED=true"
