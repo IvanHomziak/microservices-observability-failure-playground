@@ -1,0 +1,11 @@
+version: '3.9'
+
+services:
+  orders-service:
+    environment:
+      ORDERS_EVENTS_KAFKA_ENABLED: "true"
+
+  inventory-service:
+    environment:
+      INVENTORY_FAILURE_SIMULATION_CONSUMER_LAG_MODE_ENABLED: "true"
+      INVENTORY_FAILURE_SIMULATION_PROCESSING_DELAY_MS: "1500"
