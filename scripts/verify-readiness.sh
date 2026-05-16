@@ -47,6 +47,8 @@ run_check "docker compose + audit override/profile" "docker compose -f docker-co
 run_check "docker compose observability profile" "docker compose --profile observability config"
 run_check "docker compose full profile" "docker compose --profile full config"
 
+# S003–S008 are intentionally not included until deterministic verifier scripts exist.
+
 run_check "verify milestone 1" "./scripts/verify-milestone-1.sh"
 run_check "verify s001" "./scripts/verify-s001-resttemplate-timeout.sh"
 run_check "verify s002" "./scripts/verify-s002-payments-http-500.sh"

@@ -55,6 +55,8 @@ done
 ## Runtime scenario checks
 Expected result: each verifier exits `0`.
 
+Scenarios without verifier scripts must not be considered fully implemented. They should remain Partially implemented or Placeholder until a deterministic verifier is added.
+
 ```bash
 ./scripts/verify-milestone-1.sh
 ./scripts/verify-s001-resttemplate-timeout.sh

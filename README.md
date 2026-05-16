@@ -35,7 +35,7 @@ Use this command for the readiness matrix:
 
 It runs static checks, compose contract checks, and runtime verifier scripts, then prints a PASS/FAIL/WARNING summary table.
 
-## Deterministic scenario verification commands
+## Implemented deterministic verifiers (current readiness gate)
 ```bash
 ./scripts/verify-milestone-1.sh
 ./scripts/verify-s001-resttemplate-timeout.sh
@@ -45,6 +45,10 @@ It runs static checks, compose contract checks, and runtime verifier scripts, th
 ./scripts/verify-audit-flow.sh
 ./scripts/verify-observability-stack.sh
 ```
+
+`verify-observability-stack.sh` is included with **partial** observability verification only.
+
+S003–S008 are not part of the final readiness gate until deterministic verifier scripts are implemented for them.
 
 ## Optional profiles and purpose
 - `kafka`: Redpanda + inventory async event flow runtime.
