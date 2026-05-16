@@ -188,6 +188,17 @@ Notes:
 - Loki: `http://localhost:3100`
 - Tempo: `http://localhost:3200`
 
+Verification scope for `./scripts/verify-observability-stack.sh`:
+- validates that core app + observability components start and health endpoints respond;
+- triggers a success request and an S001-shaped request for quick smoke testing;
+- does **not** assert full Loki application log ingestion end-to-end.
+
+For deterministic S001 timeout validation, use:
+
+```bash
+./scripts/verify-s001-resttemplate-timeout.sh
+```
+
 Current limitation: Promtail is configured as an opt-in observability component. The compose file does not mount the host Docker socket in this stabilization PR, so log shipping behavior may need follow-up runtime verification depending on the target environment.
 
 ## Kafka async order-created flow
@@ -196,6 +207,8 @@ Kafka flow verification must use the verifier script, which enables `ORDERS_EVEN
 ```bash
 ./scripts/verify-kafka-flow.sh
 ```
+
+`verify-kafka-flow.sh` restores the default `orders-service` runtime on script exit (success or failure).
 
 Runtime components:
 - `redpanda` broker on `localhost:9092`;
@@ -220,6 +233,7 @@ Scripts:
 ```
 
 Audit flow verification uses `docker-compose.audit.yml` to enable `ORDERS_AUDIT_ENABLED=true`.
+Both notification and audit verifiers restore the default `orders-service` runtime on script exit (success or failure).
 
 Do not rely on `docker compose --profile kafka` or `docker compose --profile async` alone for flow verification unless you also apply the corresponding override files (or equivalent environment variables).
 
