@@ -1,0 +1,11 @@
+version: '3.9'
+
+services:
+  orders-service:
+    environment:
+      ORDERS_FAILURES_DATABASE_SLOW_QUERY_ENABLED: "true"
+      ORDERS_FAILURES_DATABASE_SLOW_QUERY_DELAY_MS: "3000"
+      ORDERS_EVENTS_KAFKA_ENABLED: "false"
+      ORDERS_EVENTS_NOTIFICATION_ENABLED: "false"
+      ORDERS_AUDIT_ENABLED: "false"
+      ORDERS_NOTIFICATIONS_ENABLED: "false"
