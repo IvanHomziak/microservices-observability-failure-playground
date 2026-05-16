@@ -2,7 +2,10 @@ package com.playground.ordersservice.api;
 
 import com.playground.ordersservice.app.OrderService;
 import com.playground.ordersservice.infra.http.PaymentGatewayException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -27,6 +30,16 @@ class OrderControllerIntegrationTest {
     @MockBean
     private OrderService orderService;
 
+    @BeforeEach
+    void clearMdcBeforeTest() {
+        MDC.clear();
+    }
+
+    @AfterEach
+    void clearMdcAfterTest() {
+        MDC.clear();
+    }
+
     @Test
     void shouldCreateOrderSuccessfully() throws Exception {
         when(orderService.create(any(OrderRequest.class), eq(SUCCESS_CORRELATION_ID)))
@@ -45,6 +58,9 @@ class OrderControllerIntegrationTest {
 
     @Test
     void shouldReturnErrorWithCorrelationIdWhenPaymentTimesOut() throws Exception {
+        MDC.put("correlationId", PAYMENT_TIMEOUT_CORRELATION_ID);
+        MDC.put("correlation_id", PAYMENT_TIMEOUT_CORRELATION_ID);
+
         when(orderService.create(any(OrderRequest.class), eq(PAYMENT_TIMEOUT_CORRELATION_ID)))
                 .thenThrow(new PaymentGatewayException("PAYMENT_TIMEOUT", "Timeout while calling payment service"));
 
