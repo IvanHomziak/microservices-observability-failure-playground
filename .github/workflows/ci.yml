@@ -34,7 +34,24 @@ jobs:
           cache: maven
 
       - name: Run Maven tests
-        run: mvn -B test
+        run: |
+          # Maven Central / GitHub runner networking can occasionally return transient 403/5xx
+          # during plugin/provider resolution. Retry real test execution; do not skip tests.
+          for attempt in 1 2 3; do
+            echo "Maven test attempt ${attempt}/3"
+            if mvn -B \
+              -Dmaven.wagon.http.retryHandler.count=3 \
+              -Dmaven.wagon.httpconnectionManager.ttlSeconds=120 \
+              test; then
+              exit 0
+            fi
+
+            echo "Maven test attempt ${attempt} failed"
+            sleep $((attempt * 20))
+          done
+
+          echo "Maven tests failed after 3 attempts"
+          exit 1
 
   shell-validation:
     name: Shell validation
