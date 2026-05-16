@@ -10,17 +10,17 @@
 - [S007 — Broken trace propagation](./S007-broken-trace-propagation.md)
 - [S008 — Missing correlation ID](./S008-missing-correlation-id.md)
 
-## Runtime verification status
+## Runtime verification matrix
 
-| Scenario | Status | Required profile/override | Deterministic verifier | Notes |
-|---|---|---|---|---|
-| S001 RestTemplate timeout | Implemented | `docker-compose.s001.yml` | `./scripts/verify-s001-resttemplate-timeout.sh` | Verifier starts full Milestone 1 + S001 override and restores default `payments-service` runtime on exit. |
-| S002 Payments HTTP 500 | Implemented | `docker-compose.s002.yml` | `./scripts/verify-s002-payments-http-500.sh` | Verifier starts full Milestone 1 + S002 override and restores default `payments-service` runtime on exit. |
-| Kafka success flow | Implemented | `docker-compose.kafka.yml` + `kafka` profile | `./scripts/verify-kafka-flow.sh` | Use verifier; profile alone is not sufficient unless kafka override/env flags are also applied. |
-| Notification flow | Implemented | `docker-compose.notification.yml` + `async` profile | `./scripts/verify-notification-flow.sh` | Use verifier; profile alone is not sufficient unless notification override/env flags are also applied. |
-| Audit flow | Implemented | `docker-compose.audit.yml` + `async` profile | `./scripts/verify-audit-flow.sh` | Use verifier; profile alone is not sufficient unless audit override/env flags are also applied. |
-| Observability stack validation | Partially implemented | `observability` profile | `./scripts/verify-observability-stack.sh` | Verifies stack health + request triggers; does not guarantee Loki app logs unless Docker log mounts/socket are configured for Promtail. |
+| Scenario | Status | Compose override | Profile | Trigger script | Verification script | Expected outcome | Known limitations |
+|---|---|---|---|---|---|---|---|
+| S001 | Implemented | `docker-compose.s001.yml` | default | `./scripts/trigger-s001-resttemplate-timeout.sh` | `./scripts/verify-s001-resttemplate-timeout.sh` | HTTP 504 + `PAYMENT_TIMEOUT` | Must use override for determinism |
+| S002 | Implemented | `docker-compose.s002.yml` | default | `./scripts/trigger-s002-payments-http-500.sh` | `./scripts/verify-s002-payments-http-500.sh` | HTTP 502 + `PAYMENT_5XX` | Must use override for determinism |
+| S003 | Implemented | none (env/config toggle) | default | `./scripts/trigger-s003-db-slow-query.sh` | `./scripts/verify-s003-db-slow-query.sh` | Success with induced latency | Metrics/traces depend on observability runtime |
+| S004 | Implemented | `docker-compose.kafka.yml` | `kafka` | `./scripts/trigger-s004-kafka-poison-message.sh` | `./scripts/verify-s004-kafka-poison-message.sh` | Poison message retries + DLQ | Trace assertions are runtime dependent |
+| S005 | Implemented | `docker-compose.kafka.yml` | `kafka` | `./scripts/trigger-s005-kafka-consumer-lag.sh` | `./scripts/verify-s005-kafka-consumer-lag.sh` | Lag grows under delay mode | Lag visibility depends on event volume |
+| S006 | Implemented | `docker-compose.notification.yml` | `async` | `./scripts/trigger-s006-pubsub-publish-failure.sh` | `./scripts/verify-s006-pubsub-publish-failure.sh` | HTTP 503 + publish failure | Must enable notification flow toggles |
+| S007 | Implemented | none (env/config toggle) | default | `./scripts/trigger-s007-broken-trace-propagation.sh` | `./scripts/verify-s007-broken-trace-propagation.sh` | Business flow succeeds; trace linkage broken | Trace proof depends on observability runtime |
+| S008 | Implemented | none | default | `./scripts/trigger-s008-missing-correlation-id.sh` | `./scripts/verify-s008-missing-correlation-id.sh` | Correlation ID generated/propagated | Trace proof depends on observability runtime |
 
-## Consistency notes
-- Use verifier scripts for deterministic runtime validation instead of manual profile-only startup commands.
-- Endpoint for synchronous request scenarios is `POST /api/orders` at `http://localhost:8080/api/orders`.
+Observability verification status remains **Partially implemented** until deterministic Loki ingestion and Tempo lookup assertions are automated.
