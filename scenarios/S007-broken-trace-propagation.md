@@ -7,7 +7,7 @@ S007
 Implemented
 
 ## 3. Purpose
-Create a deterministic observability gap by intentionally dropping outbound trace headers from `orders-service` to `payments-service`.
+Validate a deterministic observability failure where order creation succeeds, but distributed trace propagation is intentionally broken on the `orders-service -> payments-service` hop.
 
 ## 4. Services involved
 - `api-gateway`
@@ -15,48 +15,72 @@ Create a deterministic observability gap by intentionally dropping outbound trac
 - `payments-service`
 
 ## 5. Preconditions
-- Local stack is running.
-- Trace break toggle is enabled in `orders-service`.
+- Scenario stack started with:
+  - `docker compose -f docker-compose.yml -f docker-compose.s007.yml up -d --build --force-recreate`
+- `orders-service` has propagation-break toggle enabled.
 
 ## 6. Configuration toggles
-- `orders.failures.tracing-break-propagation-to-payments=true`
+- `ORDERS_FAILURES_TRACING_BREAK_PROPAGATION_TO_PAYMENTS=true`
+- Equivalent app property: `orders.failures.tracing-break-propagation-to-payments=true`
 
 ## 7. How to run
 ```bash
 ./scripts/trigger-s007-broken-trace-propagation.sh
 ```
-Optional verification:
+Deterministic verification:
 ```bash
 ./scripts/verify-s007-broken-trace-propagation.sh
 ```
 
 ## 8. Request/event payload
-HTTP request to exact endpoint:
+HTTP request to:
 - `POST /api/orders` (`http://localhost:8080/api/orders`)
 
-## 9. Expected HTTP response if applicable
-Business request can still succeed (typically `200 OK`) with `correlationId` present.
+Payload:
+```json
+{"customerId":"customer-123","amount":19.99,"currency":"USD"}
+```
 
-## 10. Expected logs
-- `orders-service`: `operation=trace_propagation_intentionally_broken target_service=payments-service`
-- `payments-service`: inbound trace header missing/changed (for example `traceparent=missing` in validation logs)
+## 9. Definition of broken propagation in this codebase
+Broken propagation means **orders-service intentionally removes outbound `traceparent` before calling payments-service**, creating a trace continuity gap even when business processing succeeds.
 
-## 11. Expected metrics
-- No guaranteed scenario-specific metric.
+Strong evidence hierarchy used by verifier:
+1. `orders-service` log marker: `operation=trace_propagation_intentionally_broken target_service=payments-service`.
+2. `payments-service` inbound log marker: `operation=payment_authorize_received ... traceparent=missing`.
+3. Optional fallback evidence: payment log path lacks the same correlation ID, indicating header/context propagation was broken.
 
-## 12. Expected traces
-- Trace continuity is broken at `orders-service -> payments-service` hop (disconnected traces).
+## 10. Expected HTTP response
+- Business request should succeed (`2xx`, typically `201`).
+- Response body should include `correlationId`.
 
-## 13. Expected root cause
-Intentional trace header removal controlled by `orders.failures.tracing-break-propagation-to-payments`.
+## 11. Expected observability/log result
+- `orders-service` contains the request correlation ID.
+- `orders-service` records explicit intentional break marker.
+- `payments-service` must show at least one of:
+  - missing `traceparent` (`traceparent=missing`), or
+  - absence/mismatch of propagated correlation evidence.
 
-## 14. What the AI diagnostics agent should conclude
-This is an observability propagation issue: business flow may succeed, but distributed trace linkage is intentionally broken.
+Expected AI diagnostics conclusion:
+> Business flow succeeds, but observability evidence shows broken downstream trace/correlation propagation.
+
+## 12. Expected metrics
+- No scenario-specific metric guarantees.
+
+## 13. Expected traces
+- Trace continuity across `orders-service -> payments-service` is intentionally broken.
+- Do not treat this scenario as requiring Tempo UI proof.
+
+## 14. Expected root cause
+Intentional behavior toggled by:
+- `orders.failures.tracing-break-propagation-to-payments=true`
 
 ## 15. Known limitations
-- Requires tracing backend/runtime instrumentation to visualize disconnected spans.
-- Correlation ID may still provide cross-service linkage even when trace continuity is broken.
+- Without dedicated trace backend assertions, deterministic verification relies on service logs.
+- Correlation ID may still be present on some requests even when `traceparent` is dropped; this does not invalidate the scenario.
+- Log format/order can vary slightly by runtime timing; verifier avoids brittle timestamp/ordering checks.
 
 ## 16. Troubleshooting
-- Verify `orders.failures.tracing-break-propagation-to-payments=true` in effective config.
-- Confirm logs are searched with the same `correlationId`.
+- Confirm override file sets `ORDERS_FAILURES_TRACING_BREAK_PROPAGATION_TO_PAYMENTS=true`.
+- Re-run verifier and inspect live logs:
+  - `docker compose logs -f api-gateway orders-service payments-service`
+- Ensure unique `s007-` correlation IDs are used per trigger run.
