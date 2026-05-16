@@ -25,12 +25,11 @@ class PaymentClientTest {
     @BeforeEach
     void setUp() {
         restTemplate = mock(RestTemplate.class);
-        var failures = new FailureScenariosProperties(false, false, false, false);
-        var restClientsProperties = new RestClientsProperties(new RestClientsProperties.RestClients(
-                new RestClientsProperties.RestClient("http://payments.internal:8090"),
-                new RestClientsProperties.RestClient("unused")
-        ));
-        paymentClient = new PaymentClient(restTemplate, failures, restClientsProperties);
+        paymentClient = new PaymentClient(
+                restTemplate,
+                defaultFailures(),
+                restClients("http://payments.internal:8090")
+        );
     }
 
     @Test
@@ -81,5 +80,17 @@ class PaymentClientTest {
         assertThatThrownBy(() -> paymentClient.authorize("o-6", BigDecimal.ONE, "USD"))
                 .isInstanceOf(PaymentGatewayException.class)
                 .extracting("code").isEqualTo("PAYMENT_5XX");
+    }
+
+    private static FailureScenariosProperties defaultFailures() {
+        return new FailureScenariosProperties();
+    }
+
+    private static RestClientsProperties restClients(String paymentsBaseUrl) {
+        return new RestClientsProperties(
+                new RestClientsProperties.RestClients(
+                        new RestClientsProperties.Payments(paymentsBaseUrl, 2000, 3000)
+                )
+        );
     }
 }
