@@ -17,7 +17,7 @@ check_url() {
     fi
     sleep 3
   done
-  echo "  FAIL: $name -> $url"
+  echo "  FAIL: $name -> $url" >&2
   return 1
 }
 
@@ -31,15 +31,15 @@ check_url "Tempo" "http://localhost:3200/ready"
 check_url "OTel Collector" "http://localhost:13133/"
 
 echo "[3/6] Triggering SUCCESS"
-./scripts/trigger-successful-order.sh || true
+./scripts/trigger-successful-order.sh
 
 echo "[4/6] Triggering S001"
-./scripts/trigger-s001-resttemplate-timeout.sh || true
+./scripts/trigger-s001-resttemplate-timeout.sh
 
-echo "[5/6] Query hints"
-echo "  Grafana: http://localhost:3000"
-echo "  Prometheus: http://localhost:9090"
-echo "  Logs by correlationId: ./scripts/show-logs-by-correlation-id.sh <correlation-id>"
-echo "  Traces by traceId in Grafana Tempo: Explore -> Tempo datasource -> query by trace ID"
+echo "[5/6] Verification scope and limitations"
+echo "  Verified: service/observability components started and health endpoints responded."
+echo "  Note: this script does NOT assert Loki contains application logs."
+echo "  Promtail is started, but container log shipping may require Docker socket or container log volume mounts."
+echo "  Fallback for deterministic troubleshooting: docker compose logs api-gateway orders-service payments-service"
 
 echo "[6/6] Done"

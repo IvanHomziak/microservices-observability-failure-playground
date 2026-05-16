@@ -22,12 +22,14 @@ Exercise deterministic downstream 5xx handling so clients observe a stable upstr
 - `failure-simulation.payments.forced-status-code=500`
 
 ## 7. How to run
-```bash
-./scripts/trigger-s002-payments-http-500.sh
-```
-Optional verification:
+Deterministic verification:
 ```bash
 ./scripts/verify-s002-payments-http-500.sh
+```
+
+Trigger-only (no deterministic setup by itself):
+```bash
+./scripts/trigger-s002-payments-http-500.sh
 ```
 
 ## 8. Request/event payload
