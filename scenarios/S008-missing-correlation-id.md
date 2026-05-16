@@ -4,7 +4,7 @@
 S008
 
 ## 2. Status
-Implemented by this PR
+Implemented
 
 ## 3. Purpose
 Validate deterministic behavior when `POST /api/orders` is sent without `X-Correlation-Id`: `api-gateway` must generate a correlation ID and propagate it through the core synchronous flow.

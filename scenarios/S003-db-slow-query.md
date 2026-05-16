@@ -1,7 +1,7 @@
 # S003 — DB slow query / database latency
 
 ## Status
-Implemented by this PR.
+Implemented
 
 ## Required override
 - `docker-compose.s003.yml`
@@ -38,3 +38,8 @@ Override values used for this scenario:
 
 ## AI diagnostics expected conclusion
 "Root cause is induced slow database path in orders-service, not payment-service failure."
+
+
+## Known limitations
+- Deterministic assertion is based on elapsed time threshold and logs, not DB engine internals.
+- Slow-query threshold can be sensitive to host load; verifier uses a conservative lower-bound check.

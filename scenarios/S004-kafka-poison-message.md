@@ -4,7 +4,7 @@
 S004
 
 ## 2. Status
-Implemented by this PR
+Implemented
 
 ## 3. Purpose
 Validate deterministic poison-message handling in the `inventory-service` Kafka consumer.
