@@ -35,11 +35,17 @@ Use this command for the readiness matrix:
 
 It runs static checks, compose contract checks, and runtime verifier scripts, then prints a PASS/FAIL/WARNING summary table.
 
-## Implemented deterministic verifiers (current readiness gate)
+## Implemented deterministic verifiers (current readiness gate, target >=95% scoped readiness)
 ```bash
 ./scripts/verify-milestone-1.sh
 ./scripts/verify-s001-resttemplate-timeout.sh
 ./scripts/verify-s002-payments-http-500.sh
+./scripts/verify-s003-db-slow-query.sh
+./scripts/verify-s004-kafka-poison-message.sh
+./scripts/verify-s005-kafka-consumer-lag.sh
+./scripts/verify-s006-pubsub-publish-failure.sh
+./scripts/verify-s007-broken-trace-propagation.sh
+./scripts/verify-s008-missing-correlation-id.sh
 ./scripts/verify-kafka-flow.sh
 ./scripts/verify-notification-flow.sh
 ./scripts/verify-audit-flow.sh
@@ -48,7 +54,7 @@ It runs static checks, compose contract checks, and runtime verifier scripts, th
 
 `verify-observability-stack.sh` is included with **partial** observability verification only.
 
-S003–S008 are not part of the final readiness gate until deterministic verifier scripts are implemented for them.
+S003–S008 are now included in the readiness gate only when their verifier scripts are present and executable.
 
 ## Optional profiles and purpose
 - `kafka`: Redpanda + inventory async event flow runtime.
@@ -68,9 +74,9 @@ CI validates:
   - `observability` and `full` profile configs
 
 ## Observability status
-Current status: **Partially verified**.
+Current status: **Partially implemented** (Loki proof required; Tempo assertion may warn if deterministic trace extraction is unavailable).
 - Verified: observability components reachable; request triggerability; Docker log correlation evidence.
-- Not automatically asserted: deterministic Loki ingestion proof and Tempo trace lookup assertion.
+- Not automatically asserted in all runs: deterministic Tempo trace lookup assertion (can warn when trace extraction is unstable).
 
 ## Documentation links
 - Readiness checklist: [docs/readiness-checklist.md](docs/readiness-checklist.md)

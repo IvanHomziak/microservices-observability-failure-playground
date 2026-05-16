@@ -50,5 +50,15 @@ If step 4 is unavailable or snapshots at zero, verifier still asserts determinis
 - Requires minimum successful request count before assertions.
 - Uses bounded wait + explicit service health checks before trigger.
 
-## 10. Expected AI diagnostics conclusion
-Root cause is slow Kafka consumer/inventory-service processing causing consumer lag/backlog.
+## 11. Expected HTTP result
+- Trigger burst requests return `2xx` (typically `201`) for accepted orders while backlog accumulates asynchronously.
+
+## 12. Expected logs
+- `orders-service`: repeated `operation=kafka_event_published` for `s005-*` correlation IDs.
+- `inventory-service`: repeated `operation=kafka_processing_delay_simulated` for same burst window.
+
+## 13. Known limitations
+- Real-time lag snapshots may briefly report `0` depending on timing of group-state sampling.
+
+## 14. Expected AI diagnostics conclusion
+Root cause is deterministic slow consumer behavior in inventory-service creating Kafka backlog/lag symptoms.

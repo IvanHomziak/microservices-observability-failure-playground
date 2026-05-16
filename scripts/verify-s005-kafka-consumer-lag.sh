@@ -21,7 +21,7 @@ wait_for_health() {
   local name="$1" url="$2"
   for _ in {1..80}; do
     body="$(curl -sS "$url" || true)"
-    if printf '%s' "$body" | rg '"status"\s*:\s*"UP"' >/dev/null; then
+    if printf '%s' "$body" | grep -E '"status"[[:space:]]*:[[:space:]]*"UP"' >/dev/null; then
       echo "[OK] ${name} is healthy"
       return 0
     fi
@@ -43,8 +43,8 @@ wait_for_health "inventory-service" "http://localhost:8083/actuator/health"
 output="$(./scripts/trigger-s005-kafka-consumer-lag.sh "${count}")"
 printf '%s\n' "$output"
 
-correlation_prefix="$(printf '%s\n' "$output" | rg '^correlation_prefix=' | sed 's/correlation_prefix=//')"
-success_count="$(printf '%s\n' "$output" | rg '^success_count=' | sed 's/success_count=//')"
+correlation_prefix="$(printf '%s\n' "$output" | grep -E '^correlation_prefix=' | sed 's/correlation_prefix=//')"
+success_count="$(printf '%s\n' "$output" | grep -E '^success_count=' | sed 's/success_count=//')"
 
 if [[ -z "$correlation_prefix" ]]; then
   echo "[FAIL] could not extract correlation_prefix" >&2
@@ -58,13 +58,13 @@ fi
 
 sleep 5
 
-published_count=$(docker compose logs orders-service --since=5m | rg "operation=kafka_event_published" | rg "${correlation_prefix}" | wc -l | tr -d ' ')
+published_count=$(docker compose logs orders-service --since=5m | grep -E "operation=kafka_event_published" | grep -E "${correlation_prefix}" | wc -l | tr -d ' ')
 if [[ "$published_count" -lt 5 ]]; then
   echo "[FAIL] expected multiple kafka_event_published logs, got ${published_count}" >&2
   exit 1
 fi
 
-delay_count=$(docker compose logs inventory-service --since=10m | rg "operation=kafka_processing_delay_simulated" | rg "${correlation_prefix}" | wc -l | tr -d ' ')
+delay_count=$(docker compose logs inventory-service --since=10m | grep -E "operation=kafka_processing_delay_simulated" | grep -E "${correlation_prefix}" | wc -l | tr -d ' ')
 if [[ "$delay_count" -lt 3 ]]; then
   echo "[FAIL] expected delayed consumer processing logs, got ${delay_count}" >&2
   exit 1

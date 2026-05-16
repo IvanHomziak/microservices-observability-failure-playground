@@ -36,6 +36,11 @@ Expected result: all commands exit `0`.
 docker compose config
 docker compose -f docker-compose.yml -f docker-compose.s001.yml config
 docker compose -f docker-compose.yml -f docker-compose.s002.yml config
+docker compose -f docker-compose.yml -f docker-compose.s003.yml config
+docker compose -f docker-compose.yml -f docker-compose.s004.yml --profile kafka config
+docker compose -f docker-compose.yml -f docker-compose.s005.yml --profile kafka config
+docker compose -f docker-compose.yml -f docker-compose.s006.yml --profile async config
+docker compose -f docker-compose.yml -f docker-compose.s007.yml config
 docker compose -f docker-compose.yml -f docker-compose.kafka.yml --profile kafka config
 docker compose -f docker-compose.yml -f docker-compose.notification.yml --profile async config
 docker compose -f docker-compose.yml -f docker-compose.audit.yml --profile async config
@@ -61,6 +66,12 @@ Scenarios without verifier scripts must not be considered fully implemented. The
 ./scripts/verify-milestone-1.sh
 ./scripts/verify-s001-resttemplate-timeout.sh
 ./scripts/verify-s002-payments-http-500.sh
+./scripts/verify-s003-db-slow-query.sh
+./scripts/verify-s004-kafka-poison-message.sh
+./scripts/verify-s005-kafka-consumer-lag.sh
+./scripts/verify-s006-pubsub-publish-failure.sh
+./scripts/verify-s007-broken-trace-propagation.sh
+./scripts/verify-s008-missing-correlation-id.sh
 ./scripts/verify-kafka-flow.sh
 ./scripts/verify-notification-flow.sh
 ./scripts/verify-audit-flow.sh
@@ -72,6 +83,8 @@ Scenarios without verifier scripts must not be considered fully implemented. The
 - If health checks fail, run: `docker compose logs --tail=200`
 - If ports conflict, stop local processes or run: `docker compose down --remove-orphans`
 - If stale config is suspected, recreate containers: `docker compose up -d --build --force-recreate`
+- If a scenario verifier fails, run the corresponding `trigger-*` script and inspect scenario-specific service logs for the printed correlation ID.
+- If observability verification fails on Tempo trace lookup only, treat it as partial readiness when Loki ingestion check passes.
 
 ## Cleanup commands
 ```bash

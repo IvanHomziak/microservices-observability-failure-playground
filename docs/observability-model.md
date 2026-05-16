@@ -10,7 +10,7 @@
 
 ## Observability readiness status
 - **Loki ingestion proof: Implemented** (query assertion by correlation ID).
-- **Tempo trace assertion: Partially implemented** (asserted only when stable trace ID extraction succeeds; otherwise explicit warning).
+- **Tempo trace assertion: Partially implemented** (best-effort: if trace ID extraction fails or Tempo lookup does not return the extracted trace, verifier emits warning and continues).
 - Overall readiness remains **partially implemented** until deterministic Tempo assertion is always stable.
 
 ## Query examples
@@ -27,7 +27,7 @@ If trace ID extraction from runtime logs is not stable/reliable in a given envir
 
 `WARNING: Tempo is reachable, but deterministic trace assertion is not implemented because trace ID extraction is not stable.`
 
-In this warning path, script still proves Loki ingestion and component reachability, but does not claim full Tempo evidence.
+In these warning paths, script still proves required Loki ingestion and component reachability, but does not claim full Tempo evidence.
 
 ## Known limitations
 - Promtail relies on Docker host mounts (`/var/run/docker.sock` and `/var/lib/docker/containers`) in read-only mode; this can vary across host runtimes (Docker Desktop VM mappings, rootless Docker, CI container isolation).
