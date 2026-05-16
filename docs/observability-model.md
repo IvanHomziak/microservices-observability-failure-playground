@@ -2,39 +2,45 @@
 
 ## What is currently verified
 - `./scripts/verify-observability-stack.sh` starts Milestone 1 + observability profile and validates health for Grafana, Prometheus, Loki, Tempo, and OTel Collector.
-- The script triggers application traffic (`trigger-successful-order.sh`) with a unique correlation ID.
-- The script verifies Prometheus and Tempo endpoints are reachable.
-- The script checks Docker container logs for the correlation ID as a fallback evidence path.
+- The script triggers application traffic with a unique correlation ID prefixed as `observability-`.
+- The script verifies request success and checks Docker container logs for the correlation ID.
+- The script performs a deterministic Loki query API assertion and fails if no matching log line is returned for the correlation ID.
+- The script verifies Prometheus health and Targets API reachability.
+- The script attempts deterministic Tempo trace lookup when a stable trace ID can be extracted from logs.
 
-## What is not automatically verified
-- End-to-end Loki ingestion for application logs is **not** automatically asserted.
-- Automatic Tempo trace lookup by trace ID is **not** asserted.
-- Therefore observability readiness is **Partially implemented** (component health + triggerability, not full query proof).
+## Observability readiness status
+- **Loki ingestion proof: Implemented** (query assertion by correlation ID).
+- **Tempo trace assertion: Partially implemented** (asserted only when stable trace ID extraction succeeds; otherwise explicit warning).
+- Overall readiness remains **partially implemented** until deterministic Tempo assertion is always stable.
 
-## How to inspect Grafana
-- URL: `http://localhost:3000`
-- Default credentials: `admin/admin`
-- Use **Explore** to query Prometheus/Loki/Tempo datasources.
+## Query examples
+- Loki readiness: `curl -fsS http://localhost:3100/ready`
+- Loki query by correlation ID:
+  - `curl -fsS "http://localhost:3100/loki/api/v1/query_range?query={service=~\"api-gateway|orders-service|payments-service\"}%20|=%20\"<correlation-id>\"&limit=20"`
+- Prometheus targets API:
+  - `curl -fsS http://localhost:9090/api/v1/targets`
+- Tempo trace lookup (when trace ID is known):
+  - `curl -fsS "http://localhost:3200/api/traces/<trace-id>"`
 
-## How to inspect Prometheus
-- URL: `http://localhost:9090`
-- Health: `http://localhost:9090/-/healthy`
-- Example target check: **Status -> Targets** (gateway/orders/payments should be UP).
+## Tempo limitation behavior
+If trace ID extraction from runtime logs is not stable/reliable in a given environment, verifier output is:
 
-## How to inspect Loki
-- Readiness: `http://localhost:3100/ready`
-- Example query in Grafana Explore (Loki datasource):
-  - `{service=~"api-gateway|orders-service|payments-service"} |= "<correlation-id>"`
+`WARNING: Tempo is reachable, but deterministic trace assertion is not implemented because trace ID extraction is not stable.`
 
-## How to inspect Tempo
-- Readiness: `http://localhost:3200/ready`
-- In Grafana Explore, select Tempo datasource and search by trace ID from logs.
+In this warning path, script still proves Loki ingestion and component reachability, but does not claim full Tempo evidence.
 
 ## Known limitations
-- Loki ingestion can vary by Docker logging environment; verification script does not fail on missing Loki query evidence.
-- Trace search requires manual extraction of trace IDs from logs or responses.
+- Promtail relies on Docker host mounts (`/var/run/docker.sock` and `/var/lib/docker/containers`) in read-only mode; this can vary across host runtimes (Docker Desktop VM mappings, rootless Docker, CI container isolation).
+- Tempo assertion depends on log availability of trace IDs; if missing/unstable, fallback warning is emitted.
 
-## Future hardening path
-1. Add deterministic Loki query assertion in `verify-observability-stack.sh` by correlation ID.
-2. Add deterministic trace extraction + Tempo API lookup assertion.
-3. Promote observability status from *Partially implemented* to *Implemented* after both assertions are stable in CI/runtime.
+## Troubleshooting
+1. Confirm observability stack is running:
+   - `docker compose --profile observability ps`
+2. Check Promtail sees Docker containers:
+   - `docker compose logs promtail | tail -n 100`
+3. Validate Loki endpoint and query manually:
+   - `curl -fsS http://localhost:3100/ready`
+   - run query example above with a known correlation ID.
+4. If Tempo lookup fails, inspect service logs for `trace_id=` fields:
+   - `docker compose logs --since=5m api-gateway orders-service payments-service | grep trace_id=`
+5. If Docker host paths are unavailable, run with an environment that exposes `/var/run/docker.sock` and `/var/lib/docker/containers` to Compose mounts.
