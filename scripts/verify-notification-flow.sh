@@ -4,6 +4,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+cleanup_orders_runtime() {
+  echo "[INFO] Restoring default orders-service runtime"
+  docker compose up -d --build --force-recreate orders-service || \
+    echo "[WARN] Failed to restore default orders-service runtime" >&2
+}
+
+trap cleanup_orders_runtime EXIT
+
 wait_for_health() {
   local name="$1" url="$2"
   for _ in {1..60}; do

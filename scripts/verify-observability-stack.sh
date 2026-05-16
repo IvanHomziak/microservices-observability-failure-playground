@@ -33,8 +33,9 @@ check_url "OTel Collector" "http://localhost:13133/"
 echo "[3/6] Triggering SUCCESS"
 ./scripts/trigger-successful-order.sh
 
-echo "[4/6] Triggering S001"
+echo "[4/6] Triggering S001-shaped request without deterministic timeout override"
 ./scripts/trigger-s001-resttemplate-timeout.sh
+echo "  For deterministic S001 timeout verification, run ./scripts/verify-s001-resttemplate-timeout.sh."
 
 echo "[5/6] Verification scope and limitations"
 echo "  Verified: service/observability components started and health endpoints responded."
