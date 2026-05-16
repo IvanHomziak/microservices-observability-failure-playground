@@ -37,15 +37,17 @@ run_check() {
   printf '%s|%s|%s\n' "$name" "$result" "$notes" >> "$RESULTS_FILE"
 }
 
-add_verifier_if_executable() {
+add_required_verifier() {
   local label="$1"
   local script_path="$2"
-  if [[ -x "$script_path" ]]; then
-    run_check "$label" "$script_path"
-  else
-    echo "[SKIP] $label (missing or not executable: $script_path)"
-    printf '%s|%s|%s\n' "$label" "WARNING" "missing or not executable: $script_path" >> "$RESULTS_FILE"
+  if [[ ! -x "$script_path" ]]; then
+    echo "[FAIL] $label missing or not executable: $script_path" >&2
+    printf '%s|%s|%s\n' "$label" "FAIL" "missing or not executable: $script_path" >> "$RESULTS_FILE"
+    REQUIRED_FAILURE=1
+    return
   fi
+
+  run_check "$label" "$script_path"
 }
 
 run_check "bash -n scripts/*.sh" "bash -n scripts/*.sh"
@@ -57,6 +59,8 @@ for compose_override in docker-compose.s003.yml docker-compose.s004.yml docker-c
   if [[ -f "$compose_override" ]]; then
     if [[ "$compose_override" == "docker-compose.s004.yml" || "$compose_override" == "docker-compose.s005.yml" ]]; then
       run_check "docker compose + ${compose_override} (kafka profile)" "docker compose -f docker-compose.yml -f ${compose_override} --profile kafka config"
+    elif [[ "$compose_override" == "docker-compose.s006.yml" ]]; then
+      run_check "docker compose + ${compose_override} (async profile)" "docker compose -f docker-compose.yml -f ${compose_override} --profile async config"
     else
       run_check "docker compose + ${compose_override}" "docker compose -f docker-compose.yml -f ${compose_override} config"
     fi
@@ -72,12 +76,12 @@ run_check "docker compose full profile" "docker compose --profile full config"
 run_check "verify milestone 1" "./scripts/verify-milestone-1.sh"
 run_check "verify s001" "./scripts/verify-s001-resttemplate-timeout.sh"
 run_check "verify s002" "./scripts/verify-s002-payments-http-500.sh"
-add_verifier_if_executable "verify s003" "./scripts/verify-s003-db-slow-query.sh"
-add_verifier_if_executable "verify s004" "./scripts/verify-s004-kafka-poison-message.sh"
-add_verifier_if_executable "verify s005" "./scripts/verify-s005-kafka-consumer-lag.sh"
-add_verifier_if_executable "verify s006" "./scripts/verify-s006-pubsub-publish-failure.sh"
-add_verifier_if_executable "verify s007" "./scripts/verify-s007-broken-trace-propagation.sh"
-add_verifier_if_executable "verify s008" "./scripts/verify-s008-missing-correlation-id.sh"
+add_required_verifier "verify s003" "./scripts/verify-s003-db-slow-query.sh"
+add_required_verifier "verify s004" "./scripts/verify-s004-kafka-poison-message.sh"
+add_required_verifier "verify s005" "./scripts/verify-s005-kafka-consumer-lag.sh"
+add_required_verifier "verify s006" "./scripts/verify-s006-pubsub-publish-failure.sh"
+add_required_verifier "verify s007" "./scripts/verify-s007-broken-trace-propagation.sh"
+add_required_verifier "verify s008" "./scripts/verify-s008-missing-correlation-id.sh"
 run_check "verify kafka flow" "./scripts/verify-kafka-flow.sh"
 run_check "verify notification flow" "./scripts/verify-notification-flow.sh"
 run_check "verify audit flow" "./scripts/verify-audit-flow.sh"

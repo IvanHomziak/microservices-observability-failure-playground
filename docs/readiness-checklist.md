@@ -39,7 +39,7 @@ docker compose -f docker-compose.yml -f docker-compose.s002.yml config
 docker compose -f docker-compose.yml -f docker-compose.s003.yml config
 docker compose -f docker-compose.yml -f docker-compose.s004.yml --profile kafka config
 docker compose -f docker-compose.yml -f docker-compose.s005.yml --profile kafka config
-docker compose -f docker-compose.yml -f docker-compose.s006.yml config
+docker compose -f docker-compose.yml -f docker-compose.s006.yml --profile async config
 docker compose -f docker-compose.yml -f docker-compose.s007.yml config
 docker compose -f docker-compose.yml -f docker-compose.kafka.yml --profile kafka config
 docker compose -f docker-compose.yml -f docker-compose.notification.yml --profile async config

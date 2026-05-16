@@ -44,12 +44,12 @@ if [[ "$status" != "503" ]]; then
   exit 1
 fi
 
-if ! printf '%s\n' "$output" | rg -q 'NOTIFICATION_PUBLISH_FAILED'; then
+if ! printf '%s\n' "$output" | grep -Eq 'NOTIFICATION_PUBLISH_FAILED'; then
   echo "[FAIL] expected NOTIFICATION_PUBLISH_FAILED in response" >&2
   exit 1
 fi
 
-if ! printf '%s\n' "$output" | rg -q 'correlationId'; then
+if ! printf '%s\n' "$output" | grep -Eq 'correlationId'; then
   echo "[FAIL] expected correlationId in response" >&2
   exit 1
 fi
@@ -61,7 +61,7 @@ if [[ -z "$correlation_id" ]]; then
 fi
 
 if ! docker compose -f "${ROOT_DIR}/docker-compose.yml" -f "${ROOT_DIR}/docker-compose.s006.yml" logs --since=2m orders-service \
-  | rg -q "operation=notification_publish_failed.*${correlation_id}"; then
+  | grep -Eq "operation=notification_publish_failed.*${correlation_id}"; then
   echo "[FAIL] expected orders-service notification_publish_failed log for correlation ${correlation_id}" >&2
   exit 1
 fi

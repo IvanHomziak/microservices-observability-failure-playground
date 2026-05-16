@@ -45,9 +45,9 @@ if [[ -z "$correlation_id" ]]; then
   exit 1
 fi
 
-gateway_logs="$(docker compose logs api-gateway --since=5m 2>/dev/null | rg -F "$correlation_id" || true)"
-orders_logs="$(docker compose logs orders-service --since=5m 2>/dev/null | rg -F "$correlation_id" || true)"
-payments_logs="$(docker compose logs payments-service --since=5m 2>/dev/null | rg -F "$correlation_id" || true)"
+gateway_logs="$(docker compose logs api-gateway --since=5m 2>/dev/null | grep -F "$correlation_id" || true)"
+orders_logs="$(docker compose logs orders-service --since=5m 2>/dev/null | grep -F "$correlation_id" || true)"
+payments_logs="$(docker compose logs payments-service --since=5m 2>/dev/null | grep -F "$correlation_id" || true)"
 
 if [[ -z "$gateway_logs" ]]; then
   echo "[FAIL] api-gateway logs do not contain generated correlation ID: $correlation_id" >&2

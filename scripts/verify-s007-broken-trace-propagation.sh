@@ -41,7 +41,7 @@ if [[ ! "$status" =~ ^2[0-9][0-9]$ ]]; then
   exit 1
 fi
 
-if ! printf '%s\n' "$output" | rg -q '"correlationId"\s*:'; then
+if ! printf '%s\n' "$output" | grep -Eq '"correlationId"[[:space:]]*:'; then
   echo "[FAIL] expected response body to contain correlationId" >&2
   exit 1
 fi
@@ -50,24 +50,24 @@ correlation_id="$(printf '%s\n' "$output" | awk -F': ' '/^correlation ID:/ {prin
 [[ -n "${correlation_id}" ]] || { echo "[FAIL] unable to extract correlation ID" >&2; exit 1; }
 
 echo "[4/5] Verifying propagation evidence from logs"
-orders_logs="$(docker compose logs orders-service --since=3m 2>/dev/null | rg "${correlation_id}" || true)"
+orders_logs="$(docker compose logs orders-service --since=3m 2>/dev/null | grep -E "${correlation_id}" || true)"
 payments_logs="$(docker compose logs payments-service --since=3m 2>/dev/null || true)"
 
-if ! printf '%s\n' "$orders_logs" | rg -q "${correlation_id}"; then
+if ! printf '%s\n' "$orders_logs" | grep -Eq "${correlation_id}"; then
   echo "[FAIL] orders-service logs do not contain request correlation ID ${correlation_id}" >&2
   exit 1
 fi
 
-if ! docker compose logs orders-service --since=3m 2>/dev/null | rg -q 'operation=trace_propagation_intentionally_broken target_service=payments-service'; then
+if ! docker compose logs orders-service --since=3m 2>/dev/null | grep -Eq 'operation=trace_propagation_intentionally_broken target_service=payments-service'; then
   echo "[FAIL] orders-service missing explicit intentional trace break marker" >&2
   exit 1
 fi
 
-if printf '%s\n' "$payments_logs" | rg -q "operation=payment_authorize_received.*correlation_id=${correlation_id}.*traceparent=missing"; then
+if printf '%s\n' "$payments_logs" | grep -Eq "operation=payment_authorize_received.*correlation_id=${correlation_id}.*traceparent=missing"; then
   echo "[PASS] evidence: payments-service received request with same correlation_id but traceparent=missing"
-elif printf '%s\n' "$payments_logs" | rg -q 'operation=payment_authorize_received.*traceparent=missing'; then
+elif printf '%s\n' "$payments_logs" | grep -Eq 'operation=payment_authorize_received.*traceparent=missing'; then
   echo "[PASS] evidence: payments-service shows traceparent=missing"
-elif ! printf '%s\n' "$payments_logs" | rg -q "${correlation_id}"; then
+elif ! printf '%s\n' "$payments_logs" | grep -Eq "${correlation_id}"; then
   echo "[PASS] evidence: payments-service does not contain same correlation ID (propagation broken)"
 else
   echo "[FAIL] unable to prove broken propagation from payments-service logs" >&2
