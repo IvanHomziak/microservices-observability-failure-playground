@@ -6,54 +6,63 @@ TRIGGER_SCRIPT="${ROOT_DIR}/scripts/trigger-s002-payments-http-500.sh"
 cd "$ROOT_DIR"
 
 cleanup_payments_runtime() {
+  local cleanup_rc=0
   echo "[INFO] Restoring default payments-service runtime"
-  docker compose up -d --build --force-recreate payments-service
+  if docker compose up -d --build --force-recreate payments-service; then
+    return 0
+  fi
+  cleanup_rc=$?
+  echo "[WARN] Failed to restore default payments-service runtime (exit=${cleanup_rc})." >&2
 }
 
 trap cleanup_payments_runtime EXIT
 
-if [[ ! -x "${TRIGGER_SCRIPT}" ]]; then
-  chmod +x "${TRIGGER_SCRIPT}"
-fi
-
-echo "[INFO] Starting S002 stack with deterministic payments HTTP 500 override"
-docker compose -f docker-compose.yml -f docker-compose.s002.yml up -d --build --force-recreate payments-service
-
 wait_for_health() {
   local name="$1" url="$2"
-  for _ in {1..40}; do
+  for _ in {1..60}; do
     local body
     body="$(curl -sS "$url" || true)"
-    if printf %s "$body" | grep -q '"status"\s*:\s*"UP"'; then
+    if printf '%s' "$body" | grep -Eq '"status"\s*:\s*"UP"'; then
       echo "[OK] ${name} is healthy"
       return 0
     fi
     sleep 3
   done
   echo "[FAIL] ${name} did not become healthy at ${url}" >&2
-  docker compose logs --tail=100 api-gateway orders-service payments-service >&2 || true
+  docker compose logs --tail=120 api-gateway orders-service payments-service >&2 || true
   exit 1
 }
+
+if [[ ! -x "${TRIGGER_SCRIPT}" ]]; then
+  chmod +x "${TRIGGER_SCRIPT}"
+fi
+
+echo "[INFO] Starting full Milestone 1 stack with deterministic S002 override"
+docker compose -f docker-compose.yml -f docker-compose.s002.yml up -d --build --force-recreate
 
 wait_for_health "api-gateway" "http://localhost:8080/actuator/health"
 wait_for_health "orders-service" "http://localhost:8081/actuator/health"
 wait_for_health "payments-service" "http://localhost:8082/actuator/health"
 
-OUTPUT="$("${TRIGGER_SCRIPT}")"
-printf '%s\n' "$OUTPUT"
+OUTPUT="$(${TRIGGER_SCRIPT})"
+printf '%s
+' "$OUTPUT"
 
-STATUS="$(printf '%s\n' "$OUTPUT" | awk -F': ' '/^HTTP status:/ {print $2}' | tail -n1)"
+STATUS="$(printf '%s
+' "$OUTPUT" | awk -F': ' '/^HTTP status:/ {print $2}' | tail -n1)"
 if [[ "$STATUS" != "502" ]]; then
   echo "[FAIL] expected HTTP status 502, got '${STATUS:-missing}'" >&2
   exit 1
 fi
 
-if ! printf '%s\n' "$OUTPUT" | grep -q 'PAYMENT_5XX'; then
+if ! printf '%s
+' "$OUTPUT" | grep -q 'PAYMENT_5XX'; then
   echo "[FAIL] response does not contain PAYMENT_5XX" >&2
   exit 1
 fi
 
-if ! printf '%s\n' "$OUTPUT" | grep -q 'correlationId'; then
+if ! printf '%s
+' "$OUTPUT" | grep -q 'correlationId'; then
   echo "[FAIL] response does not contain correlationId" >&2
   exit 1
 fi
