@@ -5,9 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 cleanup_orders_runtime() {
+  local cleanup_rc=0
   echo "[INFO] Restoring default orders-service runtime"
-  docker compose up -d --build --force-recreate orders-service || \
-    echo "[WARN] Failed to restore default orders-service runtime" >&2
+  if docker compose up -d --build --force-recreate orders-service; then
+    return 0
+  fi
+  cleanup_rc=$?
+  echo "[WARN] Failed to restore default orders-service runtime (exit=${cleanup_rc})." >&2
 }
 
 trap cleanup_orders_runtime EXIT

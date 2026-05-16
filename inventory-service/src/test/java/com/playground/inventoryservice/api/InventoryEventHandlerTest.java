@@ -20,7 +20,7 @@ class InventoryEventHandlerTest {
         OrderCreatedEvent event = new OrderCreatedEvent("e1", "o1", "c1", BigDecimal.TEN, "USD", "corr-1", "trace-1", Instant.now());
 
         assertThatThrownBy(() -> handler.onOrderCreated(event, "order-created", 0, 1L, "corr-1", null))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(PoisonMessageException.class)
                 .hasMessageContaining("Simulated poison message");
     }
 

@@ -57,10 +57,10 @@ orders:
     kafka:
       enabled: false
     notification:
-      enabled: true
+      enabled: false
       url: http://localhost:8084/api/notifications/events
   notifications:
-    enabled: true
+    enabled: false
     publish-failure-enabled: false
   failures:
     database:

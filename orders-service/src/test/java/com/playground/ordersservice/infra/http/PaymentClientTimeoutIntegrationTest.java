@@ -1,12 +1,12 @@
 package com.playground.ordersservice.infra.http;
 
 import com.playground.ordersservice.infra.config.FailureScenariosProperties;
+import com.playground.ordersservice.infra.config.RestClientsProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -21,9 +21,14 @@ class PaymentClientTimeoutIntegrationTest {
     void shouldMapResourceAccessExceptionToPaymentTimeout() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         FailureScenariosProperties failures = new FailureScenariosProperties();
-        PaymentClient client = new PaymentClient(restTemplate, failures);
+        RestClientsProperties restClientsProperties = new RestClientsProperties(
+                new RestClientsProperties.RestClients(
+                        new RestClientsProperties.Payments("http://localhost:8082", 2000, 3000)
+                )
+        );
+        PaymentClient client = new PaymentClient(restTemplate, failures, restClientsProperties);
 
-        when(restTemplate.postForEntity(eq("http://localhost:8082/payments/authorize"), any(), eq(Map.class)))
+        when(restTemplate.postForEntity(eq("http://localhost:8082/payments/authorize"), any(), eq(PaymentAuthorizationResponse.class)))
                 .thenThrow(new ResourceAccessException("Read timed out"));
 
         assertThatThrownBy(() -> client.authorize("order-1", BigDecimal.ONE, "USD"))

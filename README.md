@@ -1,272 +1,80 @@
 # microservices-observability-failure-playground
 
-## Project purpose
-This repository is a deterministic playground for practicing incident diagnosis in a microservices environment. It is designed to generate reproducible production-like failures so an AI diagnostics agent can reason over HTTP symptoms, logs, metrics, traces, and service boundaries.
+Deterministic microservices failure playground for AI diagnostics workflows.
 
-## Runtime contract
-
-### Default stack: Milestone 1
-The default command starts only the stable synchronous slice:
+## Default runtime contract (Milestone 1)
+Default startup is intentionally minimal and deterministic:
 
 ```bash
 docker compose up -d --build
 ```
 
-Default services:
+Started services:
 - `postgres`
-- `api-gateway`
-- `orders-service`
-- `payments-service`
+- `api-gateway` (`:8080`)
+- `orders-service` (`:8081`)
+- `payments-service` (`:8082`)
 
-Default stack intentionally does **not** start Kafka, notification, audit, or observability services. This keeps the first acceptance path deterministic and avoids failures caused by optional infrastructure.
+Optional integrations (Kafka, notification, audit, observability) are **opt-in** via compose overrides/profiles and verifier scripts.
 
-### Optional profiles
-Use profiles when testing broader flows:
+## run-local.sh behavior
+Use:
 
 ```bash
-# Kafka / Redpanda + inventory-service (runtime only)
-docker compose --profile kafka up -d --build
-
-# notification-service + audit-service (runtime only)
-docker compose --profile async up -d --build
-
-# OTel Collector + Prometheus + Grafana + Loki + Tempo
-docker compose --profile observability up -d --build
+./scripts/run-local.sh
 ```
 
-For deterministic Kafka/notification/audit scenario validation, prefer the verifier scripts because they apply required compose override files and profiles automatically.
+It starts the Docker Milestone 1 stack only (no Maven manual startup instructions).
 
-## Milestone 1 scope
-Milestone 1 is the first stable vertical slice:
-- synchronous HTTP request flow through `api-gateway -> orders-service -> payments-service`;
-- PostgreSQL persistence used by `orders-service`;
-- implemented failure scenarios: **S001 RestTemplate timeout** and **S002 payments HTTP 500**;
-- correlation ID propagation and stable error contracts.
+## Final readiness command
+Use this command for the readiness matrix:
 
-## Implemented services
-- `api-gateway`
-- `orders-service`
-- `payments-service`
-- `inventory-service`
-- `notification-service`
-- `audit-service`
-
-Only `api-gateway`, `orders-service`, `payments-service`, and `postgres` are part of the default Milestone 1 runtime contract. Other services are opt-in via profiles.
-
-## How an AI diagnostics agent should use this playground
-The intended loop for an AI diagnostics agent is:
-1. Trigger a known scenario.
-2. Read the API symptom from the gateway response.
-3. Pivot by `correlationId` through service logs.
-4. Use traces and metrics when the observability profile is enabled.
-5. Produce an evidence-based root-cause conclusion and confidence statement.
-
-Because scenarios are deterministic, the agent can be evaluated against expected conclusions, not just generic anomaly detection.
-
-## Run locally
-
-### Start default Milestone 1 stack
 ```bash
-docker compose up -d --build
+./scripts/verify-readiness.sh
 ```
 
-### Stop stack
-```bash
-./scripts/stop-local.sh
-```
+It runs static checks, compose contract checks, and runtime verifier scripts, then prints a PASS/FAIL/WARNING summary table.
 
-## Verify Milestone 1
-Use the deterministic verifier script:
-
+## Implemented deterministic verifiers (current readiness gate)
 ```bash
 ./scripts/verify-milestone-1.sh
-```
-
-This script:
-- starts the default stack;
-- waits for health checks on `8080`, `8081`, `8082`;
-- verifies a successful order flow on the default runtime contract;
-- runs deterministic S001 verification using `docker-compose.s001.yml`;
-- restores default `payments-service` settings after S001 verification.
-
-## Trigger successful flow
-```bash
-./scripts/trigger-successful-order.sh
-```
-
-Endpoint used: `POST /api/orders` via `http://localhost:8080/api/orders`.
-
-Expected HTTP: `2xx`
-
-Representative body shape:
-```json
-{
-  "orderId": "<uuid>",
-  "status": "PAYMENT_CONFIRMED",
-  "correlationId": "success-...",
-  "traceId": "..."
-}
-```
-
-## Trigger S001: RestTemplate timeout
-```bash
-./scripts/trigger-s001-resttemplate-timeout.sh
-```
-
-This trigger only sends the request. For deterministic setup, use:
-
-```bash
 ./scripts/verify-s001-resttemplate-timeout.sh
-```
-
-The S001 verifier starts:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.s001.yml up -d --build --force-recreate
-```
-
-Expected HTTP: `504 Gateway Timeout`
-
-Representative body shape:
-```json
-{
-  "code": "PAYMENT_TIMEOUT",
-  "message": "Timeout while calling payment service",
-  "correlationId": "s001-...",
-  "timestamp": "2026-...Z"
-}
-```
-
-## Verify S002: payments HTTP 500
-S002 requires a deterministic payments-service override. Use the verifier, not only the trigger script:
-
-```bash
 ./scripts/verify-s002-payments-http-500.sh
-```
-
-The verifier starts:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.s002.yml up -d --build --force-recreate
-```
-
-Expected HTTP: `502 Bad Gateway`
-
-Representative body shape:
-```json
-{
-  "code": "PAYMENT_5XX",
-  "message": "Payment service returned 5xx status",
-  "correlationId": "s002-...",
-  "timestamp": "2026-...Z"
-}
-```
-
-
-### Deterministic scenario overrides
-- `docker-compose.s001.yml` configures `payments-service` for deterministic timeout behavior (delay > orders read timeout).
-- `docker-compose.s002.yml` configures `payments-service` for deterministic HTTP 500 behavior.
-
-## Observability stack
-The observability stack is opt-in:
-
-```bash
+./scripts/verify-kafka-flow.sh
+./scripts/verify-notification-flow.sh
+./scripts/verify-audit-flow.sh
 ./scripts/verify-observability-stack.sh
 ```
 
-This uses the `observability` profile and starts:
-- OTel Collector;
-- Prometheus;
-- Grafana;
-- Loki;
-- Promtail;
-- Tempo.
+`verify-observability-stack.sh` is included with **partial** observability verification only.
 
-Notes:
-- Grafana: `http://localhost:3000`
-- Prometheus: `http://localhost:9090`
-- Loki: `http://localhost:3100`
-- Tempo: `http://localhost:3200`
+S003–S008 are not part of the final readiness gate until deterministic verifier scripts are implemented for them.
 
-Verification scope for `./scripts/verify-observability-stack.sh`:
-- validates that core app + observability components start and health endpoints respond;
-- triggers a success request and an S001-shaped request for quick smoke testing;
-- does **not** assert full Loki application log ingestion end-to-end.
+## Optional profiles and purpose
+- `kafka`: Redpanda + inventory async event flow runtime.
+- `async`: notification/audit services runtime.
+- `observability`: Grafana, Prometheus, Loki, Tempo, OTel Collector runtime.
+- `full`: all optional profiles together.
 
-For deterministic S001 timeout validation, use:
+> Warning: manual profile startup is runtime-only smoke startup. Deterministic scenario verification should use the `verify-*` scripts.
 
-```bash
-./scripts/verify-s001-resttemplate-timeout.sh
-```
+## CI checks
+CI validates:
+- Maven tests per service
+- shell syntax for `scripts/*.sh`
+- compose contracts:
+  - base `docker compose config`
+  - `s001`, `s002`, `kafka`, `notification`, `audit` override combinations
+  - `observability` and `full` profile configs
 
-Current limitation: Promtail is configured as an opt-in observability component. The compose file does not mount the host Docker socket in this stabilization PR, so log shipping behavior may need follow-up runtime verification depending on the target environment.
+## Observability status
+Current status: **Partially verified**.
+- Verified: observability components reachable; request triggerability; Docker log correlation evidence.
+- Not automatically asserted: deterministic Loki ingestion proof and Tempo trace lookup assertion.
 
-## Kafka async order-created flow
-Kafka flow verification must use the verifier script, which enables `ORDERS_EVENTS_KAFKA_ENABLED=true` via `docker-compose.kafka.yml`:
-
-```bash
-./scripts/verify-kafka-flow.sh
-```
-
-`verify-kafka-flow.sh` restores the default `orders-service` runtime on script exit (success or failure).
-
-Runtime components:
-- `redpanda` broker on `localhost:9092`;
-- `redpanda-console` on `http://localhost:8088`;
-- `inventory-service` consuming `order-created`.
-
-Topics:
-- `order-created`
-- `order-created-dlq`
-
-## Notification flow
-Notification flow verification must use the verifier script, which enables `ORDERS_EVENTS_NOTIFICATION_ENABLED=true` and `ORDERS_NOTIFICATIONS_ENABLED=true` via `docker-compose.notification.yml`.
-
-Docs:
-- `docs/pubsub-style-notification-flow.md`
-- `docs/audit-service.md`
-
-Scripts:
-```bash
-./scripts/verify-notification-flow.sh
-./scripts/verify-audit-flow.sh
-```
-
-Audit flow verification uses `docker-compose.audit.yml` to enable `ORDERS_AUDIT_ENABLED=true`.
-Both notification and audit verifiers restore the default `orders-service` runtime on script exit (success or failure).
-
-Do not rely on `docker compose --profile kafka` or `docker compose --profile async` alone for flow verification unless you also apply the corresponding override files (or equivalent environment variables).
-
-## Scenario documentation
-Scenario index:
-
-```text
-scenarios/README.md
-```
-
-Rule for implementation status:
-A scenario should be considered implemented only if it has:
-1. code path;
-2. deterministic config toggle;
-3. trigger script;
-4. verification script;
-5. scenario documentation matching actual behavior.
-
-## AI diagnostics artifacts
-- Contract: `docs/ai-diagnostics-contract.md`
-- Evidence schema: `docs/evidence-pack-schema.md`
-- Sample agent reports: `docs/sample-agent-reports/`
-
-## Continuous Integration
-A CI workflow is defined at `.github/workflows/ci.yml` and runs on pushes to `main` and on pull requests.
-
-It validates:
-- Maven tests for each service;
-- shell script syntax via `bash -n scripts/*.sh`;
-- Docker Compose syntax via `docker compose config`.
-
-## Known limitations
-- Runtime verification still depends on local Docker and Maven availability.
-- Some Maven runs in previous automated tasks were blocked by Maven Central `403` responses in the execution environment.
-- `traceId` may be empty in some response paths even when `correlationId` is present.
-- Optional profiles should be validated independently; the default stack is intentionally small.
+## Documentation links
+- Readiness checklist: [docs/readiness-checklist.md](docs/readiness-checklist.md)
+- Scenario index and status: [scenarios/README.md](scenarios/README.md)
+- AI diagnostics contract: [docs/ai-diagnostics-contract.md](docs/ai-diagnostics-contract.md)
+- Evidence pack schema: [docs/evidence-pack-schema.md](docs/evidence-pack-schema.md)
+- Observability model details: [docs/observability-model.md](docs/observability-model.md)

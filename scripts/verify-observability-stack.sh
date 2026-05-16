@@ -4,10 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-echo "[1/6] Starting Milestone 1 + observability profile"
-docker compose --profile observability up -d --build
-
-echo "[2/6] Waiting for endpoints"
 check_url() {
   local name="$1" url="$2"
   for _ in {1..40}; do
@@ -21,6 +17,10 @@ check_url() {
   return 1
 }
 
+echo "[1/6] Starting Milestone 1 + observability profile"
+docker compose --profile observability up -d --build --force-recreate
+
+echo "[2/6] Waiting for core and observability endpoints"
 check_url "api-gateway" "http://localhost:8080/actuator/health"
 check_url "orders-service" "http://localhost:8081/actuator/health"
 check_url "payments-service" "http://localhost:8082/actuator/health"
@@ -30,17 +30,24 @@ check_url "Loki" "http://localhost:3100/ready"
 check_url "Tempo" "http://localhost:3200/ready"
 check_url "OTel Collector" "http://localhost:13133/"
 
-echo "[3/6] Triggering SUCCESS"
-./scripts/trigger-successful-order.sh
+echo "[3/6] Triggering successful request with unique correlation ID"
+CORRELATION_ID="obs-$(date +%s)"
+curl -fsS -X POST http://localhost:8080/api/orders \
+  -H 'Content-Type: application/json' \
+  -H "X-Correlation-Id: ${CORRELATION_ID}" \
+  -d '{"customerId":"obs-check","amount":17.50,"currency":"USD"}' >/tmp/verify-observability-response.json
 
-echo "[4/6] Triggering S001-shaped request without deterministic timeout override"
-./scripts/trigger-s001-resttemplate-timeout.sh
-echo "  For deterministic S001 timeout verification, run ./scripts/verify-s001-resttemplate-timeout.sh."
+echo "[4/6] Verifying fallback log evidence in Docker logs"
+if docker compose logs --since=2m api-gateway orders-service payments-service | grep -q "${CORRELATION_ID}"; then
+  echo "  OK: correlation ID found in Docker logs (${CORRELATION_ID})"
+else
+  echo "  FAIL: correlation ID not found in recent Docker logs (${CORRELATION_ID})" >&2
+  exit 1
+fi
 
-echo "[5/6] Verification scope and limitations"
-echo "  Verified: service/observability components started and health endpoints responded."
-echo "  Note: this script does NOT assert Loki contains application logs."
-echo "  Promtail is started, but container log shipping may require Docker socket or container log volume mounts."
-echo "  Fallback for deterministic troubleshooting: docker compose logs api-gateway orders-service payments-service"
+echo "[5/6] Verification scope"
+echo "  Verified: observability components are reachable; traffic is generated; Docker log correlation works."
+echo "  Not automatically verified: Loki query ingestion proof and Tempo trace lookup assertion."
+echo "  Status: Partially implemented observability verification."
 
 echo "[6/6] Done"

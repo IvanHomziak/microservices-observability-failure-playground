@@ -1,5 +1,6 @@
 package com.playground.apigateway.api;
 
+import io.micrometer.tracing.Tracer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -29,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GatewayOrdersControllerTest {
     @Autowired MockMvc mockMvc;
     @MockBean RestTemplate restTemplate;
+    @MockBean Tracer tracer;
 
     @Test
     void propagatesCorrelationIdWhenPresentAndUsesConfiguredBaseUrl() throws Exception {

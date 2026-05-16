@@ -33,7 +33,7 @@ class PaymentsServiceTest {
 
         assertThat(response.orderId()).isEqualTo("order-1");
         assertThat(response.status()).isEqualTo("AUTHORIZED");
-        assertThat(response.authorizationId()).isNotBlank();
+        assertThat(response.paymentId()).isNotBlank();
     }
 
     @Test
