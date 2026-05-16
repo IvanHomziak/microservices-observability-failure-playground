@@ -10,7 +10,7 @@ TRACE_ID="$1"
 
 echo "[logs] docker compose logs filtered by trace ID: ${TRACE_ID}"
 docker compose logs --no-color api-gateway orders-service payments-service inventory-service notification-service audit-service \
-  | rg --line-number --fixed-strings "${TRACE_ID}" || true
+  | grep -nF "${TRACE_ID}" || true
 
 echo "[logs] Grafana Explore: http://localhost:3000/explore"
 echo "[logs] Loki query: {service_name=~\"api-gateway|orders-service|payments-service|inventory-service|notification-service|audit-service\"} |= \"${TRACE_ID}\""
