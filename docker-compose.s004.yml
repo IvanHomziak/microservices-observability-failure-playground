@@ -1,0 +1,10 @@
+version: '3.9'
+
+services:
+  orders-service:
+    environment:
+      ORDERS_EVENTS_KAFKA_ENABLED: "true"
+
+  inventory-service:
+    environment:
+      INVENTORY_FAILURE_SIMULATION_POISON_MESSAGE_ENABLED: "true"
