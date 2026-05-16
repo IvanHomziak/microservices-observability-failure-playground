@@ -45,7 +45,7 @@ class PaymentsControllerTest {
         mockMvc.perform(post("/payments/authorize").contentType(MediaType.APPLICATION_JSON)
                         .content("{" + "\"orderId\":\"order-1\",\"amount\":10,\"currency\":\"USD\"}"))
                 .andExpect(status().isOk())
-                .andExpect(content().json("{" + "\"authorizationId\":\"auth-1\",\"orderId\":\"order-1\",\"status\":\"AUTHORIZED\"}"));
+                .andExpect(content().json("{" + "\"paymentId\":\"auth-1\",\"orderId\":\"order-1\",\"status\":\"AUTHORIZED\"}"));
     }
 
     @Test

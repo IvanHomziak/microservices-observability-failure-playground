@@ -120,7 +120,7 @@ public class OrderService {
                 );
                 kafkaTemplate.send(MessageBuilder.withPayload(eventPayload)
                         .setHeader(KafkaHeaders.TOPIC, "order-created")
-                        .setHeader(KafkaHeaders.MESSAGE_KEY, orderId)
+                        .setHeader(KafkaHeaders.KEY, orderId)
                         .setHeader("correlation_id", correlationId)
                         .setHeader("traceparent", traceparent)
                         .setHeader("event_type", "OrderCreatedEvent")
