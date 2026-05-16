@@ -7,63 +7,48 @@ S005
 Implemented
 
 ## 3. Purpose
-Simulate deterministic consumer slowdown in `inventory-service` so backlog and consumer lag become observable.
+Create deterministic Kafka backlog behavior by slowing `inventory-service` consumer processing while `orders-service` publishes many order-created events quickly.
 
 ## 4. Services involved
+- `api-gateway`
 - `orders-service`
+- `payments-service`
 - `inventory-service`
 - `redpanda`
-- `redpanda-console`
 
-## 5. Preconditions
-- Local stack is running.
-- `inventory-service` lag mode is enabled with non-zero delay.
+## 5. Required override/profile
+- Compose files: `docker-compose.yml` + `docker-compose.s005.yml`
+- Profile: `--profile kafka`
+- Deterministic consumer delay toggle:
+  - `INVENTORY_FAILURE_SIMULATION_CONSUMER_LAG_MODE_ENABLED=true`
+  - `INVENTORY_FAILURE_SIMULATION_PROCESSING_DELAY_MS=1500`
+- Kafka publish toggle:
+  - `ORDERS_EVENTS_KAFKA_ENABLED=true`
 
-## 6. Configuration toggles
-- `inventory.failure-simulation.consumer-lag-mode-enabled=true`
-- `inventory.failure-simulation.processing-delay-ms` (for example `1200`)
-
-## 7. How to run
+## 6. Trigger command
 ```bash
-./scripts/trigger-s005-kafka-consumer-lag.sh 40
-```
-Optional verification:
-```bash
-./scripts/verify-s005-kafka-consumer-lag.sh 25
+./scripts/trigger-s005-kafka-consumer-lag.sh 20
 ```
 
-## 8. Request/event payload
-Burst of order-created events produced by script argument count (for example `40`).
+## 7. Verify command
+```bash
+./scripts/verify-s005-kafka-consumer-lag.sh 20
+```
 
-## 9. Expected HTTP response if applicable
-Not applicable (Kafka lag scenario).
+## 8. Evidence model
+Verifier requires all of the following:
+1. Multiple order API requests succeed.
+2. `orders-service` logs include multiple `operation=kafka_event_published` records for `s005-*` correlation IDs.
+3. `inventory-service` logs include multiple `operation=kafka_processing_delay_simulated` records for same `s005-*` burst.
+4. Optional stronger proof: `rpk group describe inventory-service` reports lag `> 0` for `order-created` during active processing.
 
-## 10. Expected logs
-`inventory-service` includes delay simulation entries such as:
-- `operation=kafka_processing_delay_simulated`
-- `delay_ms`
-- event/order/correlation fields
+If step 4 is unavailable or snapshots at zero, verifier still asserts deterministic delay/backlog evidence from steps 1-3 and prints that limitation explicitly.
 
-## 11. Expected metrics
-From `inventory-service`:
-- `inventory.kafka.messages.consumed`
-- `inventory.kafka.messages.failed`
-- `inventory.kafka.processing.duration`
-- `inventory.kafka.processing.delay`
+## 9. Known flakiness controls
+- Uses deterministic fixed consumer delay instead of uncontrolled load spikes.
+- Produces burst through API quickly with shared `s005-` correlation prefix for exact log filtering.
+- Requires minimum successful request count before assertions.
+- Uses bounded wait + explicit service health checks before trigger.
 
-## 12. Expected traces
-If tracing is enabled, consumer processing spans should show longer durations while lag mode is active.
-
-## 13. Expected root cause
-Intentional per-message processing delay in consumer path reduces throughput and creates lag.
-
-## 14. What the AI diagnostics agent should conclude
-Observed lag is caused by deterministic consumer slowdown in `inventory-service`, not by broker outage.
-
-## 15. Known limitations
-- Requires enough produced load to exceed current consumer throughput.
-- Lag visualization depends on Redpanda Console availability.
-
-## 16. Troubleshooting
-- Verify `inventory.failure-simulation.consumer-lag-mode-enabled=true` in runtime.
-- Increase event burst count if lag is not visible.
+## 10. Expected AI diagnostics conclusion
+Root cause is slow Kafka consumer/inventory-service processing causing consumer lag/backlog.

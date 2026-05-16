@@ -1,22 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-count="${1:-30}"
-correlation_prefix="s005-lag-$(date +%s)"
-created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+count="${1:-20}"
+correlation_prefix="s005-$(date +%s)"
+
+success_count=0
+failure_count=0
+correlation_ids=""
 
 for i in $(seq 1 "$count"); do
-  event_id="evt-${correlation_prefix}-${i}"
-  order_id="ord-${correlation_prefix}-${i}"
   correlation_id="${correlation_prefix}-${i}"
-  payload=$(cat <<JSON
-{"eventId":"${event_id}","orderId":"${order_id}","customerId":"cust-s005","amount":19.99,"currency":"USD","correlationId":"${correlation_id}","traceId":"trace-s005-${i}","createdAt":"${created_at}"}
-JSON
-)
-  printf '%s\n' "${payload}" | docker compose exec -T redpanda rpk topic produce order-created -H "correlation_id:${correlation_id}" >/dev/null
- done
+  payload="{\"customerId\":\"cust-s005-${i}\",\"amount\":19.99,\"currency\":\"USD\"}"
+
+  http_code=$(curl -sS -o /tmp/s005-order-${i}.json -w "%{http_code}" \
+    -X POST "http://localhost:8080/api/orders" \
+    -H "Content-Type: application/json" \
+    -H "X-Correlation-Id: ${correlation_id}" \
+    -d "${payload}" || true)
+
+  if [[ "${http_code}" == "201" || "${http_code}" == "200" ]]; then
+    success_count=$((success_count + 1))
+  else
+    failure_count=$((failure_count + 1))
+  fi
+
+  echo "request_index=${i} correlation_id=${correlation_id} http_status=${http_code}"
+  correlation_ids+="${correlation_id} "
+done
 
 echo "count=${count}"
+echo "success_count=${success_count}"
+echo "failure_count=${failure_count}"
 echo "correlation_prefix=${correlation_prefix}"
-echo "redpanda_console_url=http://localhost:8081/topics/order-created/consumer-groups/inventory-service"
-echo "logs_command=docker compose logs inventory-service --since=10m | rg 'operation=kafka_processing_delay_simulated|${correlation_prefix}'"
+echo "correlation_ids=${correlation_ids}"
