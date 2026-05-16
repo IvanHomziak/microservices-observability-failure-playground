@@ -1,0 +1,4 @@
+services:
+  orders-service:
+    environment:
+      ORDERS_FAILURES_TRACING_BREAK_PROPAGATION_TO_PAYMENTS: "true"

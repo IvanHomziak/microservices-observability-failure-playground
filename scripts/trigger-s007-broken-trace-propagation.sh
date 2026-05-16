@@ -2,14 +2,18 @@
 set -euo pipefail
 
 SCENARIO_ID="S007"
-URL="http://localhost:8080/api/orders"
+URL="${API_GATEWAY_URL:-http://localhost:8080}/api/orders"
 CORRELATION_ID="s007-$(date +%s)"
 PAYLOAD='{"customerId":"customer-123","amount":19.99,"currency":"USD"}'
 TMP_HEADERS="$(mktemp)"
 TMP_BODY="$(mktemp)"
 trap 'rm -f "$TMP_HEADERS" "$TMP_BODY"' EXIT
 
-HTTP_CODE=$(curl -sS -D "$TMP_HEADERS" -o "$TMP_BODY" -w "%{http_code}"   -X POST "$URL"   -H 'Content-Type: application/json'   -H "X-Correlation-Id: ${CORRELATION_ID}"   -d "$PAYLOAD")
+HTTP_CODE="$(curl -sS -D "$TMP_HEADERS" -o "$TMP_BODY" -w "%{http_code}" \
+  -X POST "$URL" \
+  -H 'Content-Type: application/json' \
+  -H "X-Correlation-Id: ${CORRELATION_ID}" \
+  -d "$PAYLOAD")"
 
 echo "scenario ID: ${SCENARIO_ID}"
 echo "request payload: ${PAYLOAD}"
