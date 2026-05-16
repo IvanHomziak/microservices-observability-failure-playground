@@ -9,7 +9,7 @@ wait_for_health() {
   for _ in {1..60}; do
     local body
     body="$(curl -sS "$url" || true)"
-    if printf %s "$body" | rg -q '"status"\s*:\s*"UP"'; then
+    if printf '%s' "$body" | grep -Eq '"status"\s*:\s*"UP"'; then
       echo "[OK] ${name} is healthy"
       return 0
     fi
@@ -22,7 +22,7 @@ wait_for_health() {
 }
 
 echo "[verify-notification-flow] starting deterministic notification runtime"
-docker compose -f docker-compose.yml -f docker-compose.notification.yml --profile async up -d --build --force-recreate orders-service notification-service
+docker compose -f docker-compose.yml -f docker-compose.notification.yml --profile async up -d --build --force-recreate
 
 wait_for_health "api-gateway" "http://localhost:8080/actuator/health"
 wait_for_health "orders-service" "http://localhost:8081/actuator/health"
@@ -30,7 +30,7 @@ wait_for_health "payments-service" "http://localhost:8082/actuator/health"
 wait_for_health "notification-service" "http://localhost:8084/actuator/health"
 
 ./scripts/trigger-notification-success-flow.sh >/tmp/notification-flow-trigger.txt
-correlation_id=$(rg "correlation_id=" /tmp/notification-flow-trigger.txt | sed 's/correlation_id=//')
+correlation_id=$(grep -Eo 'correlation_id=[^[:space:]]+' /tmp/notification-flow-trigger.txt | head -n1 | sed 's/correlation_id=//')
 
 if [[ -z "${correlation_id}" ]]; then
   echo "[FAIL] could not extract correlation_id from trigger output" >&2
@@ -40,9 +40,9 @@ fi
 
 sleep 3
 
-docker compose logs orders-service --since=2m | rg "operation=notification_publish_succeeded" | rg "${correlation_id}" >/dev/null
-docker compose logs notification-service --since=2m | rg "operation=notification_event_received" | rg "${correlation_id}" >/dev/null
-docker compose logs notification-service --since=2m | rg "operation=notification_sent" | rg "${correlation_id}" >/dev/null
+docker compose logs orders-service --since=2m | grep -E 'operation=notification_publish_succeeded' | grep -E "${correlation_id}" >/dev/null
+docker compose logs notification-service --since=2m | grep -E 'operation=notification_event_received' | grep -E "${correlation_id}" >/dev/null
+docker compose logs notification-service --since=2m | grep -E 'operation=notification_sent' | grep -E "${correlation_id}" >/dev/null
 
 echo "[PASS] Notification flow verified for correlation_id=${correlation_id}"
 echo "[INFO] Logs command: docker compose logs -f orders-service notification-service"

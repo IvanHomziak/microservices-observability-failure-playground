@@ -21,21 +21,20 @@ Default services:
 Default stack intentionally does **not** start Kafka, notification, audit, or observability services. This keeps the first acceptance path deterministic and avoids failures caused by optional infrastructure.
 
 ### Optional profiles
-Use profiles when testing broader flows. For Kafka/notification/audit verification, use the dedicated verifier scripts because they apply required compose override files that enable producer-side feature flags in `orders-service`:
+Use profiles when testing broader flows:
 
 ```bash
-# Kafka / Redpanda + inventory-service
+# Kafka / Redpanda + inventory-service (runtime only)
 docker compose --profile kafka up -d --build
 
-# notification-service + audit-service
+# notification-service + audit-service (runtime only)
 docker compose --profile async up -d --build
 
 # OTel Collector + Prometheus + Grafana + Loki + Tempo
 docker compose --profile observability up -d --build
-
-# everything
-docker compose --profile full up -d --build
 ```
+
+For deterministic Kafka/notification/audit scenario validation, prefer the verifier scripts because they apply required compose override files and profiles automatically.
 
 ## Milestone 1 scope
 Milestone 1 is the first stable vertical slice:
@@ -123,7 +122,7 @@ This trigger only sends the request. For deterministic setup, use:
 The S001 verifier starts:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.s001.yml up -d --build --force-recreate payments-service
+docker compose -f docker-compose.yml -f docker-compose.s001.yml up -d --build --force-recreate
 ```
 
 Expected HTTP: `504 Gateway Timeout`
@@ -148,7 +147,7 @@ S002 requires a deterministic payments-service override. Use the verifier, not o
 The verifier starts:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.s002.yml up -d --build --force-recreate payments-service
+docker compose -f docker-compose.yml -f docker-compose.s002.yml up -d --build --force-recreate
 ```
 
 Expected HTTP: `502 Bad Gateway`

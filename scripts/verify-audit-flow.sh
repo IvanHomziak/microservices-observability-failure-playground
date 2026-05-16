@@ -9,7 +9,7 @@ wait_for_health() {
   for _ in {1..60}; do
     local body
     body="$(curl -sS "$url" || true)"
-    if printf %s "$body" | rg -q '"status"\s*:\s*"UP"'; then
+    if printf '%s' "$body" | grep -Eq '"status"\s*:\s*"UP"'; then
       echo "[OK] ${name} is healthy"
       return 0
     fi
@@ -24,7 +24,7 @@ wait_for_health() {
 CORRELATION_ID="audit-$(date +%s)"
 
 echo "[verify-audit-flow] starting deterministic audit runtime"
-docker compose -f docker-compose.yml -f docker-compose.audit.yml --profile async up -d --build --force-recreate orders-service audit-service
+docker compose -f docker-compose.yml -f docker-compose.audit.yml --profile async up -d --build --force-recreate
 
 wait_for_health "api-gateway" "http://localhost:8080/actuator/health"
 wait_for_health "orders-service" "http://localhost:8081/actuator/health"
@@ -40,7 +40,7 @@ RESPONSE=$(curl -sS -X POST http://localhost:8080/api/orders \
 echo "$RESPONSE"
 
 echo "[verify-audit-flow] checking audit logs"
-docker compose logs audit-service --since=2m | rg "operation=audit_event_received" | rg "correlation_id=${CORRELATION_ID}" >/dev/null
+docker compose logs audit-service --since=2m | grep -E 'operation=audit_event_received' | grep -E "correlation_id=${CORRELATION_ID}" >/dev/null
 
 echo "[PASS] Audit flow verified for correlation_id=${CORRELATION_ID}"
 echo "[INFO] Logs command: docker compose logs -f orders-service audit-service"
