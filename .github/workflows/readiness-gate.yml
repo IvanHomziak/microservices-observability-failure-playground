@@ -1,0 +1,95 @@
+name: Readiness Gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/readiness-gate.yml"
+      - "scripts/verify-readiness.sh"
+      - "scripts/verify-s*.sh"
+      - "scripts/trigger-s*.sh"
+      - "docker-compose*.yml"
+      - "scenarios/**"
+      - "docs/readiness-checklist.md"
+      - "docs/ai-diagnostics-contract.md"
+      - "docs/evidence-pack-schema.md"
+      - "observability/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/readiness-gate.yml"
+      - "scripts/verify-readiness.sh"
+      - "scripts/verify-s*.sh"
+      - "scripts/trigger-s*.sh"
+      - "docker-compose*.yml"
+      - "scenarios/**"
+      - "docs/readiness-checklist.md"
+      - "docs/ai-diagnostics-contract.md"
+      - "docs/evidence-pack-schema.md"
+      - "observability/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: readiness-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readiness-gate:
+    name: Run deterministic readiness gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Docker Compose version
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker --version
+          docker compose version
+
+      - name: Validate readiness script
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -f scripts/verify-readiness.sh ]; then
+            echo "Missing scripts/verify-readiness.sh"
+            exit 1
+          fi
+
+          chmod +x scripts/*.sh
+          bash -n scripts/*.sh
+
+      - name: Run readiness gate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            docker compose logs --no-color > readiness-gate-logs.txt || true
+            docker compose ps > readiness-gate-ps.txt || true
+            docker compose down -v --remove-orphans || true
+          }
+          trap cleanup EXIT
+
+          ./scripts/verify-readiness.sh | tee readiness-gate-output.txt
+
+      - name: Upload readiness diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: readiness-gate-diagnostics
+          path: |
+            readiness-gate-output.txt
+            readiness-gate-logs.txt
+            readiness-gate-ps.txt
+          if-no-files-found: ignore
+          retention-days: 7
