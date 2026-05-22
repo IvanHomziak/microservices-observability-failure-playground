@@ -40,7 +40,7 @@ jobs:
   runtime-smoke:
     name: Default runtime smoke verification
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -63,10 +63,14 @@ jobs:
             exit 1
           fi
 
-          chmod +x scripts/verify-milestone-1.sh
+          chmod +x scripts/*.sh
+          bash -n scripts/*.sh
 
-      - name: Start default runtime and run smoke verifier
+      - name: Run default runtime smoke verifier
         shell: bash
+        env:
+          HEALTH_TIMEOUT_SECONDS: "240"
+          HEALTH_POLL_SECONDS: "5"
         run: |
           set -euo pipefail
 
@@ -77,7 +81,9 @@ jobs:
           }
           trap cleanup EXIT
 
-          docker compose up -d --build
+          # verify-milestone-1.sh owns default stack startup and scenario verification.
+          # Do not start docker compose here as well, otherwise services can be recreated
+          # while the verifier is waiting for health endpoints.
           ./scripts/verify-milestone-1.sh
 
       - name: Upload runtime smoke diagnostics
