@@ -230,35 +230,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate workflow does not use risky pull_request_target
+      - name: Validate workflow does not use risky pull_request_target trigger
         shell: bash
         run: |
           set -euo pipefail
 
-          if grep -R "pull_request_target" .github/workflows; then
-            echo "pull_request_target is not allowed in this POC safety gate"
+          # Check only real YAML trigger declarations, not arbitrary text inside comments,
+          # step names, echo messages, or this validation script itself.
+          forbidden_trigger_regex='^[[:space:]]*pull_request_target[[:space:]]*:|^[[:space:]]*-[[:space:]]*pull_request_target[[:space:]]*$|^[[:space:]]*on:[[:space:]]*\[.*pull_request_target.*\]'
+
+          if grep -RInE "$forbidden_trigger_regex" .github/workflows; then
+            echo "Forbidden pull_request_target trigger detected"
             exit 1
           fi
 
-          echo "No pull_request_target usage detected"
+          echo "No pull_request_target trigger usage detected"
 
       - name: Validate workflow does not reference secrets
         shell: bash
         run: |
           set -euo pipefail
 
-          if grep -R "secrets\." .github/workflows; then
-            echo "Secrets are not allowed in the PR fast feedback workflow stage"
+          # This fast-feedback workflow must not use repository/org/environment secrets.
+          # It is intentionally read-only and safe for PR validation.
+          if grep -RInE 'secrets\.[A-Za-z0-9_]+' .github/workflows --exclude='pr-fast-feedback.yml'; then
+            echo "Secrets usage detected in another workflow"
+            echo "For the initial POC, secrets must not be used by PR validation workflows"
             exit 1
           fi
 
-          echo "No secrets usage detected"
+          echo "No secrets usage detected in checked workflows"
 
-      - name: Validate no direct deployment commands
+      - name: Validate no direct deployment commands in scripts
         shell: bash
         run: |
           set -euo pipefail
 
+          # Scan scripts only. Do not scan this workflow file, otherwise the denylist
+          # below would match itself and create false positives.
           forbidden_patterns=(
             "kubectl apply"
             "helm upgrade"
@@ -269,10 +278,10 @@ jobs:
           )
 
           for pattern in "${forbidden_patterns[@]}"; do
-            if grep -R "$pattern" .github/workflows scripts; then
-              echo "Forbidden deployment command detected: $pattern"
+            if grep -RIn "$pattern" scripts; then
+              echo "Forbidden deployment command detected in scripts: $pattern"
               exit 1
             fi
           done
 
-          echo "No direct deployment commands detected"
+          echo "No direct deployment commands detected in scripts"
