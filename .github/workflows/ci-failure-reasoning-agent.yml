@@ -99,7 +99,9 @@ jobs:
             python -m ci_failure_reasoning_agent.main \
               --evidence-dir triage \
               --repository-root . \
-              --output reasoning/output/agent-diagnostic-report.md
+              --provider deterministic \
+              --output reasoning/output/agent-diagnostic-report.md \
+              --prompt-output reasoning/output/reasoning-prompt.md
 
           cat reasoning/output/agent-diagnostic-report.md
 
@@ -109,6 +111,7 @@ jobs:
           name: ci-failure-reasoning-agent-${{ inputs.run_id }}
           path: |
             reasoning/output/agent-diagnostic-report.md
+            reasoning/output/reasoning-prompt.md
             triage/output/ci-failure-diagnostics-report.md
             triage/output/agent-fix-plan.md
             triage/raw/*.json

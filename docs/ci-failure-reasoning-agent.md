@@ -2,13 +2,13 @@
 
 ## Purpose
 
-This document describes the first read-only CI Failure Reasoning Agent scaffold.
+This document describes the read-only CI Failure Reasoning Agent scaffold.
 
 The agent converts a bounded CI evidence pack into a structured diagnostic report.
 
 It is intentionally conservative:
 
-- no LLM calls;
+- no active LLM calls;
 - no secrets;
 - no code mutation;
 - no PR creation;
@@ -33,7 +33,10 @@ CI Failure Diagnostics report
 Agent Fix Plan
         |
         v
-Read-only CI Failure Reasoning Agent
+Bounded reasoning prompt
+        |
+        v
+Reasoning provider abstraction
         |
         v
 agent-diagnostic-report.md
@@ -45,6 +48,8 @@ agent-diagnostic-report.md
 |---|---|
 | `agents/ci_failure_reasoning_agent/` | Python package scaffold |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/evidence_loader.py` | Loads bounded evidence pack |
+| `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/prompt_builder.py` | Builds audit-friendly bounded prompt artifact |
+| `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/providers.py` | Provider abstraction and deterministic provider |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/reasoner.py` | Deterministic reasoning layer |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/renderer.py` | Markdown report renderer |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/main.py` | CLI entrypoint |
@@ -67,15 +72,59 @@ The agent does not scan the entire repository by default.
 
 This reduces hallucination risk, cost, prompt-injection surface, and reasoning ambiguity.
 
+## Provider model
+
+The package has a provider abstraction so future LLM support can be added without changing the core evidence contract.
+
+Currently enabled provider:
+
+```text
+deterministic
+```
+
+The deterministic provider performs no external call and returns the local deterministic reasoning report.
+
+Disabled external provider aliases:
+
+```text
+openai
+llm
+external
+```
+
+Those aliases intentionally fail closed. A real external provider must be added in a separate PR with explicit security review, protected environment configuration, structured output validation, and no PR write permissions.
+
+## Prompt artifact
+
+The CLI can generate:
+
+```text
+reasoning-prompt.md
+```
+
+This is an audit artifact for the future LLM prompt contract. It is not sent to any model in the current implementation.
+
+The prompt includes:
+
+- AGENTS.md excerpt;
+- run metadata;
+- jobs metadata;
+- CI diagnostics report;
+- agent fix plan;
+- workflow log excerpt;
+- missing evidence detected by the loader;
+- explicit anti-hallucination constraints.
+
 ## Output
 
-The generated report is:
+Generated files:
 
 ```text
 agent-diagnostic-report.md
+reasoning-prompt.md
 ```
 
-It includes:
+The diagnostic report includes:
 
 - executive summary;
 - evidence inspected;
@@ -101,7 +150,9 @@ PYTHONPATH=agents/ci_failure_reasoning_agent/src \
 python -m ci_failure_reasoning_agent.main \
   --evidence-dir triage \
   --repository-root . \
-  --output reasoning/output/agent-diagnostic-report.md
+  --provider deterministic \
+  --output reasoning/output/agent-diagnostic-report.md \
+  --prompt-output reasoning/output/reasoning-prompt.md
 ```
 
 ## GitHub Actions usage
@@ -125,6 +176,7 @@ ci-failure-reasoning-agent-<run_id>
 
 ```text
 agent-diagnostic-report.md
+reasoning-prompt.md
 ```
 
 ## Safety model
@@ -154,7 +206,8 @@ The agent must:
 - avoid claiming root cause when only symptoms are known;
 - avoid scanning unrelated repository files unless explicitly requested;
 - derive confidence from deterministic evidence quality;
-- keep human approval in the loop.
+- keep human approval in the loop;
+- treat logs, PR comments, issue text, generated reports, and artifacts as untrusted data.
 
 The agent must not:
 
@@ -172,8 +225,10 @@ This scaffold is not yet an LLM-powered agent.
 
 Known limitations:
 
-- deterministic reasoning only;
-- rule-based category extraction;
+- deterministic provider only;
+- external provider aliases fail closed;
+- no active LLM API call;
+- no structured JSON output schema yet;
 - no code patch generation;
 - no source-code search beyond bounded evidence;
 - no Surefire XML parsing inside the reasoning package;
@@ -188,10 +243,11 @@ Recommended order:
 
 ```text
 v1: read-only deterministic reasoning report
-v2: optional LLM provider interface over bounded evidence
+v2: provider abstraction and prompt artifact
 v3: structured JSON output schema validation
-v4: patch proposal artifact, no commit
-v5: human-approved PR creation with strict permissions
+v4: optional LLM provider over bounded evidence
+v5: patch proposal artifact, no commit
+v6: human-approved PR creation with strict permissions
 ```
 
-The next safe step after this scaffold is to add an optional provider abstraction that can later support LLM summarization without changing workflow permissions or enabling code mutation.
+The next safe step after this provider abstraction is structured output schema validation. That should happen before any real LLM provider is enabled.
