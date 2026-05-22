@@ -27,6 +27,24 @@ The deterministic provider performs no external call and returns the locally ren
 
 External provider names such as `openai`, `llm`, or `external` intentionally fail closed. A real external provider must be added in a separate PR with explicit security review, structured output validation, environment protection, and no PR write permissions.
 
+## Structured output contract
+
+The package emits a validated structured JSON report:
+
+```text
+agent-diagnostic-report.json
+```
+
+Current schema version:
+
+```text
+1.0
+```
+
+The contract validates required fields, allowed confidence values, and non-empty evidence/recommendation lists without adding a third-party schema dependency.
+
+This JSON contract is the future boundary for LLM output validation. A real LLM provider should not be trusted unless its output passes the same contract validation.
+
 ## Prompt artifact
 
 The CLI can generate a bounded reasoning prompt artifact:
@@ -59,6 +77,7 @@ The package also reads repository-level `AGENTS.md` from the provided repository
 
 ```text
 agent-diagnostic-report.md
+agent-diagnostic-report.json
 reasoning-prompt.md
 ```
 
@@ -71,6 +90,7 @@ python -m ci_failure_reasoning_agent.main \
   --repository-root . \
   --provider deterministic \
   --output reasoning/output/agent-diagnostic-report.md \
+  --json-output reasoning/output/agent-diagnostic-report.json \
   --prompt-output reasoning/output/reasoning-prompt.md
 ```
 
