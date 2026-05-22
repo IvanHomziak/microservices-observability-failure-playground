@@ -1,0 +1,161 @@
+name: Agentic CI/CD Planner
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Describe the CI/CD analysis or improvement request"
+        required: true
+        type: string
+      scope:
+        description: "Analysis scope"
+        required: true
+        default: "ci-cd"
+        type: choice
+        options:
+          - ci-cd
+          - workflows
+          - readiness
+          - scenarios
+          - security
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentic-cicd-planner-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate-agentic-cicd-plan:
+    name: Generate CI/CD planning artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate repository context and CI/CD plan
+        shell: bash
+        env:
+          REQUESTED_TASK: ${{ inputs.task }}
+          REQUESTED_SCOPE: ${{ inputs.scope }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p agent-output
+
+          {
+            echo "# Agentic CI/CD Plan"
+            echo
+            echo "## Requested task"
+            echo
+            echo '```text'
+            printf '%s\n' "$REQUESTED_TASK"
+            echo '```'
+            echo
+            echo "## Scope"
+            echo
+            echo '```text'
+            printf '%s\n' "$REQUESTED_SCOPE"
+            echo '```'
+            echo
+            echo "## Repository purpose"
+            echo
+            echo "This repository is a deterministic microservices failure playground for AI diagnostics workflows."
+            echo "CI/CD changes must preserve deterministic scenario execution, verifier scripts, evidence generation, and documentation alignment."
+            echo
+            echo "## Important repository files"
+            echo
+            for file in \
+              README.md \
+              docs/ai-diagnostics-contract.md \
+              docs/evidence-pack-schema.md \
+              docs/readiness-checklist.md \
+              scenarios/README.md \
+              scripts/verify-readiness.sh; do
+              if [ -f "$file" ]; then
+                echo "- $file"
+              fi
+            done
+            echo
+            echo "## Existing workflows"
+            echo
+            if [ -d .github/workflows ]; then
+              find .github/workflows -maxdepth 1 -type f -name '*.yml' -o -name '*.yaml' | sort | sed 's#^#- #'
+            else
+              echo "- None"
+            fi
+            echo
+            echo "## Service directories"
+            echo
+            for service in api-gateway orders-service payments-service inventory-service notification-service audit-service; do
+              if [ -d "$service" ]; then
+                echo "- $service"
+              else
+                echo "- $service (missing)"
+              fi
+            done
+            echo
+            echo "## Docker Compose files"
+            echo
+            find . -maxdepth 1 -type f -name 'docker-compose*.yml' | sort | sed 's#^./#- #'
+            echo
+            echo "## Verifier scripts"
+            echo
+            find scripts -maxdepth 1 -type f -name 'verify*.sh' | sort | sed 's#^#- #' || true
+            echo
+            echo "## Scenario documents"
+            echo
+            find scenarios -maxdepth 1 -type f -name 'S*.md' | sort | sed 's#^#- #' || true
+            echo
+            echo "## Recommended validation order"
+            echo
+            echo "1. PR Fast Feedback"
+            echo "2. Java Build Test"
+            echo "3. Docker Compose Contracts"
+            echo "4. Runtime Smoke"
+            echo "5. Readiness Gate"
+            echo "6. Scenario-specific verifier"
+            echo
+            echo "## Safety rules for future agent changes"
+            echo
+            echo "- Do not use pull_request_target for untrusted PR workflows."
+            echo "- Do not use secrets in PR validation workflows."
+            echo "- Do not push Docker images from PR workflows."
+            echo "- Do not deploy from PR workflows."
+            echo "- Do not remove deterministic failure toggles without updating scenario docs and verifiers."
+            echo "- Do not change expected HTTP status codes without updating verifier scripts and scenario documentation."
+            echo "- Keep runtime and readiness workflows manual or path-limited until they are stable."
+            echo
+            echo "## Next recommended action"
+            echo
+            case "$REQUESTED_SCOPE" in
+              ci-cd|workflows)
+                echo "Review workflow separation, remove duplicated jobs from legacy ci.yml only after new dedicated workflows are green."
+                ;;
+              readiness)
+                echo "Compare scripts/verify-readiness.sh against scenarios/README.md and ensure every Implemented scenario has a required verifier."
+                ;;
+              scenarios)
+                echo "Check every scenario document has matching compose override, trigger script, verifier script, expected evidence, and known limitations."
+                ;;
+              security)
+                echo "Review workflow permissions, trigger types, secret usage, artifact retention, and deployment/publishing commands."
+                ;;
+              *)
+                echo "Review CI/CD consistency and produce a scoped implementation plan."
+                ;;
+            esac
+          } > agent-output/agentic-cicd-plan.md
+
+          cat agent-output/agentic-cicd-plan.md
+
+      - name: Upload agentic CI/CD plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentic-cicd-plan
+          path: agent-output/agentic-cicd-plan.md
+          if-no-files-found: error
+          retention-days: 14
