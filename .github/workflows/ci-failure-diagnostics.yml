@@ -1,0 +1,94 @@
+name: CI Failure Diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "GitHub Actions workflow run ID to analyze"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ci-failure-diagnostics-${{ github.workflow }}-${{ github.ref }}-${{ inputs.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose-ci-failure:
+    name: Generate CI failure diagnostics report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate analyzer syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/analyze-ci-failure.py
+
+      - name: Collect workflow run metadata and logs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p diagnostics/raw diagnostics/logs diagnostics/output
+
+          echo "Collecting workflow run metadata for run_id=${RUN_ID}"
+          gh run view "$RUN_ID" --repo "$REPOSITORY" --json \
+            databaseId,displayTitle,event,headBranch,headSha,name,status,conclusion,createdAt,updatedAt,url \
+            > diagnostics/raw/run.json
+
+          echo "Collecting job metadata"
+          gh run view "$RUN_ID" --repo "$REPOSITORY" --json jobs \
+            > diagnostics/raw/jobs.json
+
+          echo "Downloading workflow logs"
+          if gh run download "$RUN_ID" --repo "$REPOSITORY" --dir diagnostics/downloaded-artifacts; then
+            echo "Downloaded workflow artifacts for run ${RUN_ID}"
+          else
+            echo "No workflow artifacts downloaded or artifact download failed; continuing"
+          fi
+
+          if gh run view "$RUN_ID" --repo "$REPOSITORY" --log > diagnostics/logs/workflow-run.log; then
+            echo "Downloaded workflow run logs"
+          else
+            echo "Could not download workflow run logs; continuing with metadata only"
+            touch diagnostics/logs/workflow-run.log
+          fi
+
+      - name: Generate deterministic diagnostics report
+        shell: bash
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          python3 scripts/analyze-ci-failure.py \
+            --logs-dir diagnostics \
+            --output diagnostics/output/ci-failure-diagnostics-report.md \
+            --run-id "$RUN_ID" \
+            --repository "$REPOSITORY"
+
+          cat diagnostics/output/ci-failure-diagnostics-report.md
+
+      - name: Upload diagnostics report and raw evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-diagnostics-${{ inputs.run_id }}
+          path: |
+            diagnostics/output/ci-failure-diagnostics-report.md
+            diagnostics/raw/*.json
+            diagnostics/logs/*.log
+          if-no-files-found: error
+          retention-days: 14
