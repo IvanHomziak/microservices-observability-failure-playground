@@ -21,8 +21,8 @@ It produces a markdown diagnostics report and raw evidence artifacts for review.
 
 | File | Purpose |
 |---|---|
-| `.github/workflows/ci-failure-diagnostics.yml` | Manual workflow that collects logs and generates the report |
-| `scripts/analyze-ci-failure.py` | Deterministic rule-based log analyzer |
+| `.github/workflows/ci-failure-diagnostics.yml` | Manual workflow that collects logs, job metadata, artifacts, and generates the report |
+| `scripts/analyze-ci-failure.py` | Deterministic rule-based log and job-metadata analyzer |
 | `docs/ci-failure-diagnostics.md` | User guide for this diagnostics flow |
 
 ## How to run
@@ -62,6 +62,17 @@ ci-failure-diagnostics-<run_id>
 ci-failure-diagnostics-report.md
 ```
 
+## What the workflow collects
+
+The workflow collects:
+
+- workflow run metadata into `diagnostics/raw/run.json`;
+- job and step metadata into `diagnostics/raw/jobs.json`;
+- workflow logs into `diagnostics/logs/workflow-run.log` when available;
+- downloaded workflow artifacts into `diagnostics/downloaded-artifacts/` when available.
+
+The final artifact includes the generated markdown report plus raw evidence files.
+
 ## What the report contains
 
 The report includes:
@@ -69,11 +80,24 @@ The report includes:
 - repository name;
 - workflow run ID;
 - scanned evidence files;
+- failed jobs and failed steps from `jobs.json`;
 - detected failure categories;
 - concrete log evidence;
 - deterministic recommendations;
 - suggested triage order;
 - next validation commands.
+
+## Failed jobs and steps section
+
+The v2 diagnostics report includes a table like:
+
+| Job | Conclusion | Status | Failed steps | Job URL |
+|---|---|---|---|---|
+| `Maven test (orders-service)` | `failure` | `completed` | `#4 Run Maven tests with retry (failure)` | open |
+
+This section is based on GitHub Actions job metadata, not log pattern matching.
+
+Use it to quickly identify which workflow job and step failed before reading raw logs.
 
 ## Current failure categories
 
@@ -98,23 +122,25 @@ Agents should treat this report as an evidence index, not as final truth.
 The correct workflow is:
 
 1. Read `ci-failure-diagnostics-report.md`.
-2. Inspect the raw logs referenced by the report.
-3. Inspect the affected repository files.
-4. Identify the smallest safe fix.
-5. Make the change in a PR.
-6. Let dedicated workflows validate the fix.
+2. Start with the `Failed jobs and steps` table.
+3. Inspect the raw logs referenced by the report.
+4. Inspect the affected repository files.
+5. Identify the smallest safe fix.
+6. Make the change in a PR.
+7. Let dedicated workflows validate the fix.
 
 Agents must not claim root cause based only on a category match if the raw evidence is insufficient.
 
 ## Limitations
 
-This is v1 of the diagnostics flow.
+This is v2 of the diagnostics flow.
 
 Known limitations:
 
 - It is rule-based and may miss new failure signatures.
 - It can classify symptoms but does not prove root cause by itself.
-- It only analyzes logs and downloaded artifacts available to the workflow token.
+- It only analyzes logs, job metadata, and downloaded artifacts available to the workflow token.
+- It does not parse Surefire XML reports yet.
 - It does not use LLM reasoning.
 - It does not perform code changes.
 - It does not create PRs.
@@ -147,7 +173,7 @@ Possible next steps:
 
 1. Add more deterministic rules as failure patterns appear.
 2. Add support for parsing Surefire XML reports.
-3. Add explicit parsing of `diagnostics/raw/jobs.json` to list failed jobs and failed steps.
+3. Add richer workflow-run summary from `diagnostics/raw/run.json`.
 4. Add optional LLM summarization over the generated evidence pack.
 5. Add an agent-generated fix proposal.
 6. Add agent-created PRs only after explicit permissions and prompt-injection review.
@@ -156,8 +182,9 @@ The recommended evolution is:
 
 ```text
 v1: deterministic report, no LLM
-v2: richer deterministic parser
-v3: optional LLM summary, manual-only
-v4: agent proposes fix
-v5: agent opens PR with strict permissions and human review
+v2: richer deterministic parser with failed job metadata
+v3: Surefire XML parsing and richer run summary
+v4: optional LLM summary, manual-only
+v5: agent proposes fix
+v6: agent opens PR with strict permissions and human review
 ```
