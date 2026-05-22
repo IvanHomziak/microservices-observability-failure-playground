@@ -1,0 +1,287 @@
+name: PR Fast Feedback
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/**"
+      - "scripts/**"
+      - "docker-compose*.yml"
+      - "*/Dockerfile"
+      - "*/pom.xml"
+      - "docs/**"
+      - "scenarios/**"
+      - "observability/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/**"
+      - "scripts/**"
+      - "docker-compose*.yml"
+      - "*/Dockerfile"
+      - "*/pom.xml"
+      - "docs/**"
+      - "scenarios/**"
+      - "observability/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-fast-feedback-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-structure-validation:
+    name: Repository structure validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required top-level paths
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_paths=(
+            "README.md"
+            "docker-compose.yml"
+            "scripts"
+            "api-gateway"
+            "orders-service"
+            "payments-service"
+            "inventory-service"
+            "notification-service"
+            "audit-service"
+          )
+
+          for path in "${required_paths[@]}"; do
+            if [ ! -e "$path" ]; then
+              echo "Required path is missing: $path"
+              exit 1
+            fi
+          done
+
+          echo "Repository structure validation passed"
+
+      - name: Validate required scripts exist
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_scripts=(
+            "scripts/verify-readiness.sh"
+            "scripts/verify-milestone-1.sh"
+          )
+
+          for script in "${required_scripts[@]}"; do
+            if [ ! -f "$script" ]; then
+              echo "Required script is missing: $script"
+              exit 1
+            fi
+          done
+
+          echo "Required script existence validation passed"
+
+      - name: Validate required scripts are executable
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_executable_scripts=(
+            "scripts/verify-readiness.sh"
+            "scripts/verify-milestone-1.sh"
+          )
+
+          for script in "${required_executable_scripts[@]}"; do
+            if [ ! -x "$script" ]; then
+              echo "Script is not executable: $script"
+              echo "Fix locally with: chmod +x $script"
+              exit 1
+            fi
+          done
+
+          echo "Executable script validation passed"
+
+  shell-validation:
+    name: Shell syntax validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate bash syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          shopt -s nullglob
+          scripts=(scripts/*.sh)
+
+          if [ ${#scripts[@]} -eq 0 ]; then
+            echo "No shell scripts found under scripts/"
+            exit 1
+          fi
+
+          for script in "${scripts[@]}"; do
+            echo "Checking bash syntax: $script"
+            bash -n "$script"
+          done
+
+          echo "Shell syntax validation passed"
+
+  docker-compose-contract-validation:
+    name: Docker Compose contract validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Docker versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker --version
+          docker compose version
+
+      - name: Validate base Docker Compose contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose config
+
+      - name: Validate scenario Docker Compose contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f docker-compose.s001.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.s001.yml config
+          fi
+
+          if [ -f docker-compose.s002.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.s002.yml config
+          fi
+
+          if [ -f docker-compose.s003.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.s003.yml config
+          fi
+
+          if [ -f docker-compose.s004.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.s004.yml --profile kafka config
+          fi
+
+          if [ -f docker-compose.s005.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.s005.yml --profile kafka config
+          fi
+
+          if [ -f docker-compose.s006.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.s006.yml --profile async config
+          fi
+
+          if [ -f docker-compose.s007.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.s007.yml config
+          fi
+
+          if [ -f docker-compose.s008.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.s008.yml config
+          fi
+
+          echo "Scenario Docker Compose contract validation passed"
+
+      - name: Validate optional profile Docker Compose contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f docker-compose.kafka.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.kafka.yml --profile kafka config
+          fi
+
+          if [ -f docker-compose.notification.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.notification.yml --profile async config
+          fi
+
+          if [ -f docker-compose.audit.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.audit.yml --profile async config
+          fi
+
+          docker compose --profile observability config
+          docker compose --profile full config
+
+          echo "Optional profile Docker Compose validation passed"
+
+  workflow-safety-validation:
+    name: Workflow safety validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate workflow does not use risky pull_request_target trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Check only real YAML trigger declarations, not arbitrary text inside comments,
+          # step names, echo messages, or this validation script itself.
+          forbidden_trigger_regex='^[[:space:]]*pull_request_target[[:space:]]*:|^[[:space:]]*-[[:space:]]*pull_request_target[[:space:]]*$|^[[:space:]]*on:[[:space:]]*\[.*pull_request_target.*\]'
+
+          if grep -RInE "$forbidden_trigger_regex" .github/workflows; then
+            echo "Forbidden pull_request_target trigger detected"
+            exit 1
+          fi
+
+          echo "No pull_request_target trigger usage detected"
+
+      - name: Validate workflow does not reference secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # This fast-feedback workflow must not use repository/org/environment secrets.
+          # It is intentionally read-only and safe for PR validation.
+          if grep -RInE 'secrets\.[A-Za-z0-9_]+' .github/workflows --exclude='pr-fast-feedback.yml'; then
+            echo "Secrets usage detected in another workflow"
+            echo "For the initial POC, secrets must not be used by PR validation workflows"
+            exit 1
+          fi
+
+          echo "No secrets usage detected in checked workflows"
+
+      - name: Validate no direct deployment commands in scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Scan scripts only. Do not scan this workflow file, otherwise the denylist
+          # below would match itself and create false positives.
+          forbidden_patterns=(
+            "kubectl apply"
+            "helm upgrade"
+            "docker push"
+            "gcloud deploy"
+            "aws deploy"
+            "az deployment"
+          )
+
+          for pattern in "${forbidden_patterns[@]}"; do
+            if grep -RIn "$pattern" scripts; then
+              echo "Forbidden deployment command detected in scripts: $pattern"
+              exit 1
+            fi
+          done
+
+          echo "No direct deployment commands detected in scripts"
