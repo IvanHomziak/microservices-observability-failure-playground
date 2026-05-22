@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p diagnostics/raw diagnostics/logs diagnostics/output
+          mkdir -p diagnostics/raw diagnostics/logs diagnostics/output diagnostics/downloaded-artifacts
 
           echo "Collecting workflow run metadata for run_id=${RUN_ID}"
           gh run view "$RUN_ID" --repo "$REPOSITORY" --json \
@@ -52,7 +52,7 @@ jobs:
           gh run view "$RUN_ID" --repo "$REPOSITORY" --json jobs \
             > diagnostics/raw/jobs.json
 
-          echo "Downloading workflow logs"
+          echo "Downloading workflow artifacts"
           if gh run download "$RUN_ID" --repo "$REPOSITORY" --dir diagnostics/downloaded-artifacts; then
             echo "Downloaded workflow artifacts for run ${RUN_ID}"
           else
@@ -90,5 +90,6 @@ jobs:
             diagnostics/output/ci-failure-diagnostics-report.md
             diagnostics/raw/*.json
             diagnostics/logs/*.log
+            diagnostics/downloaded-artifacts/**
           if-no-files-found: error
           retention-days: 14
