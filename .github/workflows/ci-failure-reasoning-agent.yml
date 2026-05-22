@@ -101,6 +101,7 @@ jobs:
               --repository-root . \
               --provider deterministic \
               --output reasoning/output/agent-diagnostic-report.md \
+              --json-output reasoning/output/agent-diagnostic-report.json \
               --prompt-output reasoning/output/reasoning-prompt.md
 
           cat reasoning/output/agent-diagnostic-report.md
@@ -111,6 +112,7 @@ jobs:
           name: ci-failure-reasoning-agent-${{ inputs.run_id }}
           path: |
             reasoning/output/agent-diagnostic-report.md
+            reasoning/output/agent-diagnostic-report.json
             reasoning/output/reasoning-prompt.md
             triage/output/ci-failure-diagnostics-report.md
             triage/output/agent-fix-plan.md
