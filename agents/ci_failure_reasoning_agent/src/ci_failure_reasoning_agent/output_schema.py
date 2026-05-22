@@ -110,6 +110,67 @@ def render_contract_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False)
 
 
+def _list_items(payload: dict[str, Any], field: str) -> list[str]:
+    value = payload.get(field)
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return ["Invalid or missing field"]
+
+
+def _append_list_section(lines: list[str], title: str, items: list[str]) -> None:
+    lines.append(f"## {title}")
+    lines.append("")
+    for item in items:
+        lines.append(f"- {item}")
+    lines.append("")
+
+
+def render_contract_markdown(payload: dict[str, Any]) -> str:
+    """Render a validated JSON contract as markdown.
+
+    The payload is validated first so providers cannot bypass the schema by
+    returning arbitrary markdown.
+    """
+
+    errors = validate_contract(payload)
+    if errors:
+        raise ValueError(f"Cannot render invalid contract: {'; '.join(errors)}")
+
+    lines: list[str] = []
+    lines.append("# Agent Diagnostic Report")
+    lines.append("")
+    lines.append("## Executive summary")
+    lines.append("")
+    lines.append(str(payload["executive_summary"]))
+    lines.append("")
+    _append_list_section(lines, "Evidence inspected", _list_items(payload, "evidence_inspected"))
+    lines.append("## Failed workflow")
+    lines.append("")
+    lines.append(str(payload["failed_workflow"]))
+    lines.append("")
+    _append_list_section(lines, "Failed jobs and steps", _list_items(payload, "failed_jobs_and_steps"))
+    _append_list_section(lines, "Symptoms", _list_items(payload, "symptoms"))
+    _append_list_section(lines, "Root-cause hypotheses", _list_items(payload, "root_cause_hypotheses"))
+    lines.append("## Confidence")
+    lines.append("")
+    lines.append(f"`{payload['confidence']}`")
+    lines.append("")
+    _append_list_section(lines, "Missing evidence", _list_items(payload, "missing_evidence"))
+    _append_list_section(lines, "Recommended fix", _list_items(payload, "recommended_fix"))
+    _append_list_section(lines, "Files likely affected", _list_items(payload, "files_likely_affected"))
+    _append_list_section(lines, "Files not to change casually", _list_items(payload, "files_not_to_change_casually"))
+    _append_list_section(lines, "Validation plan", _list_items(payload, "validation_plan"))
+    lines.append("## Risk assessment")
+    lines.append("")
+    lines.append(str(payload["risk_assessment"]))
+    lines.append("")
+    lines.append("## Boundary")
+    lines.append("")
+    lines.append(str(payload["safety_boundary"]))
+    lines.append("")
+    return "\n".join(lines)
+
+
 def contract_from_report(report: ReasoningReport) -> dict[str, Any]:
     payload = report_to_contract(report)
     errors = validate_contract(payload)
