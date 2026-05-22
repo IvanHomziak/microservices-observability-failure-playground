@@ -224,7 +224,10 @@ def parse_failed_jobs(jobs_json_path: pathlib.Path | None) -> tuple[list[JobFail
                     )
                 )
 
-        if conclusion in FAILURE_CONCLUSIONS or status in FAILURE_STATUSES or failed_steps:
+        # Classify failed jobs only from job-level status/conclusion.
+        # Failed step metadata can exist in successful jobs when a step uses continue-on-error;
+        # those jobs must not be listed as failed because it would misdirect triage.
+        if conclusion in FAILURE_CONCLUSIONS or status in FAILURE_STATUSES:
             failed_jobs.append(
                 JobFailure(
                     name=as_string(raw_job.get("name")),
