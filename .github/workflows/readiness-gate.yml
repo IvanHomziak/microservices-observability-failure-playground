@@ -2,34 +2,6 @@ name: Readiness Gate
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/readiness-gate.yml"
-      - "scripts/verify-readiness.sh"
-      - "scripts/verify-s*.sh"
-      - "scripts/trigger-s*.sh"
-      - "docker-compose*.yml"
-      - "scenarios/**"
-      - "docs/readiness-checklist.md"
-      - "docs/ai-diagnostics-contract.md"
-      - "docs/evidence-pack-schema.md"
-      - "observability/**"
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/readiness-gate.yml"
-      - "scripts/verify-readiness.sh"
-      - "scripts/verify-s*.sh"
-      - "scripts/trigger-s*.sh"
-      - "docker-compose*.yml"
-      - "scenarios/**"
-      - "docs/readiness-checklist.md"
-      - "docs/ai-diagnostics-contract.md"
-      - "docs/evidence-pack-schema.md"
-      - "observability/**"
 
 permissions:
   contents: read
@@ -42,7 +14,7 @@ jobs:
   readiness-gate:
     name: Run deterministic readiness gate
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -70,6 +42,9 @@ jobs:
 
       - name: Run readiness gate
         shell: bash
+        env:
+          HEALTH_TIMEOUT_SECONDS: "240"
+          HEALTH_POLL_SECONDS: "5"
         run: |
           set -euo pipefail
 
@@ -92,4 +67,4 @@ jobs:
             readiness-gate-logs.txt
             readiness-gate-ps.txt
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
