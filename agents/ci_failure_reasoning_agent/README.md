@@ -6,12 +6,36 @@ Read-only scaffold for generating a structured diagnostic report from a bounded 
 
 This package is intentionally conservative:
 
-- no LLM call;
+- no active LLM call;
 - no secrets;
 - no code mutation;
 - no PR creation;
 - no deployment;
 - no image publishing.
+
+## Provider model
+
+The package now has a provider abstraction.
+
+Current enabled provider:
+
+```text
+deterministic
+```
+
+The deterministic provider performs no external call and returns the locally rendered reasoning report.
+
+External provider names such as `openai`, `llm`, or `external` intentionally fail closed. A real external provider must be added in a separate PR with explicit security review, structured output validation, environment protection, and no PR write permissions.
+
+## Prompt artifact
+
+The CLI can generate a bounded reasoning prompt artifact:
+
+```text
+reasoning-prompt.md
+```
+
+This artifact is for audit/review of the future LLM prompt contract. It is not sent to any model in the current implementation.
 
 ## Input
 
@@ -35,6 +59,7 @@ The package also reads repository-level `AGENTS.md` from the provided repository
 
 ```text
 agent-diagnostic-report.md
+reasoning-prompt.md
 ```
 
 ## Local run
@@ -44,7 +69,9 @@ PYTHONPATH=agents/ci_failure_reasoning_agent/src \
 python -m ci_failure_reasoning_agent.main \
   --evidence-dir triage \
   --repository-root . \
-  --output reasoning/output/agent-diagnostic-report.md
+  --provider deterministic \
+  --output reasoning/output/agent-diagnostic-report.md \
+  --prompt-output reasoning/output/reasoning-prompt.md
 ```
 
 ## Tests
