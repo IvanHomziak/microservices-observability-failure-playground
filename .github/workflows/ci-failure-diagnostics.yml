@@ -76,6 +76,7 @@ jobs:
 
           python3 scripts/analyze-ci-failure.py \
             --logs-dir diagnostics \
+            --jobs-json diagnostics/raw/jobs.json \
             --output diagnostics/output/ci-failure-diagnostics-report.md \
             --run-id "$RUN_ID" \
             --repository "$REPOSITORY"

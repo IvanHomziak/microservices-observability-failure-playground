@@ -2,17 +2,19 @@
 """Rule-based CI failure analyzer for GitHub Actions logs.
 
 This script is intentionally deterministic and does not call an LLM.
-It reads local text log files and produces a markdown diagnostics report.
+It reads local text log files, optionally parses GitHub Actions jobs metadata,
+and produces a markdown diagnostics report.
 """
 
 from __future__ import annotations
 
 import argparse
 import dataclasses
+import json
 import pathlib
 import re
 from collections import Counter
-from typing import Iterable
+from typing import Any, Iterable
 
 
 @dataclasses.dataclass(frozen=True)
@@ -22,6 +24,28 @@ class Finding:
     pattern: str
     evidence: str
     recommendation: str
+
+
+@dataclasses.dataclass(frozen=True)
+class StepFailure:
+    name: str
+    number: int | None
+    status: str
+    conclusion: str
+    started_at: str | None
+    completed_at: str | None
+
+
+@dataclasses.dataclass(frozen=True)
+class JobFailure:
+    name: str
+    database_id: int | None
+    status: str
+    conclusion: str
+    started_at: str | None
+    completed_at: str | None
+    url: str | None
+    failed_steps: tuple[StepFailure, ...]
 
 
 RULES: list[tuple[str, str, re.Pattern[str], str]] = [
@@ -93,6 +117,9 @@ RULES: list[tuple[str, str, re.Pattern[str], str]] = [
     ),
 ]
 
+FAILURE_CONCLUSIONS = {"failure", "cancelled", "timed_out", "action_required", "startup_failure"}
+FAILURE_STATUSES = {"failure", "cancelled", "timed_out", "action_required", "startup_failure"}
+
 
 def iter_log_files(logs_dir: pathlib.Path) -> Iterable[pathlib.Path]:
     if logs_dir.is_file():
@@ -119,6 +146,102 @@ def compact_line(line: str, max_len: int = 300) -> str:
     if len(normalized) > max_len:
         return normalized[: max_len - 3] + "..."
     return normalized
+
+
+def as_string(value: Any, default: str = "unknown") -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text if text else default
+
+
+def as_optional_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def as_optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def load_json(path: pathlib.Path) -> Any | None:
+    if not path or not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"_parse_error": str(exc)}
+
+
+def parse_failed_jobs(jobs_json_path: pathlib.Path | None) -> tuple[list[JobFailure], str | None]:
+    if jobs_json_path is None:
+        return [], "No jobs.json path was provided."
+
+    payload = load_json(jobs_json_path)
+    if payload is None:
+        return [], f"jobs.json not found at {jobs_json_path}"
+
+    if isinstance(payload, dict) and "_parse_error" in payload:
+        return [], f"Could not parse jobs.json: {payload['_parse_error']}"
+
+    raw_jobs = payload.get("jobs") if isinstance(payload, dict) else None
+    if not isinstance(raw_jobs, list):
+        return [], "jobs.json did not contain a top-level jobs array."
+
+    failed_jobs: list[JobFailure] = []
+
+    for raw_job in raw_jobs:
+        if not isinstance(raw_job, dict):
+            continue
+
+        conclusion = as_string(raw_job.get("conclusion"), default="unknown").lower()
+        status = as_string(raw_job.get("status"), default="unknown").lower()
+        raw_steps = raw_job.get("steps")
+        steps = raw_steps if isinstance(raw_steps, list) else []
+
+        failed_steps: list[StepFailure] = []
+        for raw_step in steps:
+            if not isinstance(raw_step, dict):
+                continue
+            step_conclusion = as_string(raw_step.get("conclusion"), default="unknown").lower()
+            step_status = as_string(raw_step.get("status"), default="unknown").lower()
+            if step_conclusion in FAILURE_CONCLUSIONS or step_status in FAILURE_STATUSES:
+                failed_steps.append(
+                    StepFailure(
+                        name=as_string(raw_step.get("name")),
+                        number=as_optional_int(raw_step.get("number")),
+                        status=step_status,
+                        conclusion=step_conclusion,
+                        started_at=as_optional_string(raw_step.get("startedAt")),
+                        completed_at=as_optional_string(raw_step.get("completedAt")),
+                    )
+                )
+
+        # Classify failed jobs only from job-level status/conclusion.
+        # Failed step metadata can exist in successful jobs when a step uses continue-on-error;
+        # those jobs must not be listed as failed because it would misdirect triage.
+        if conclusion in FAILURE_CONCLUSIONS or status in FAILURE_STATUSES:
+            failed_jobs.append(
+                JobFailure(
+                    name=as_string(raw_job.get("name")),
+                    database_id=as_optional_int(raw_job.get("databaseId")),
+                    status=status,
+                    conclusion=conclusion,
+                    started_at=as_optional_string(raw_job.get("startedAt")),
+                    completed_at=as_optional_string(raw_job.get("completedAt")),
+                    url=as_optional_string(raw_job.get("url")),
+                    failed_steps=tuple(failed_steps),
+                )
+            )
+
+    return failed_jobs, None
 
 
 def analyze(logs_dir: pathlib.Path, max_chars_per_file: int) -> tuple[list[Finding], Counter[str], list[str]]:
@@ -150,10 +273,28 @@ def analyze(logs_dir: pathlib.Path, max_chars_per_file: int) -> tuple[list[Findi
     return findings, category_counts, scanned_files
 
 
+def markdown_escape_cell(value: str | None) -> str:
+    if value is None:
+        return ""
+    return value.replace("|", "\\|").replace("\n", " ").strip()
+
+
+def render_failed_steps(steps: tuple[StepFailure, ...]) -> str:
+    if not steps:
+        return "No failed step metadata available"
+    fragments: list[str] = []
+    for step in steps:
+        number = f"#{step.number} " if step.number is not None else ""
+        fragments.append(f"{number}{step.name} ({step.conclusion or step.status})")
+    return "; ".join(fragments)
+
+
 def render_markdown(
     findings: list[Finding],
     category_counts: Counter[str],
     scanned_files: list[str],
+    failed_jobs: list[JobFailure],
+    jobs_parse_warning: str | None,
     run_id: str | None,
     repository: str | None,
 ) -> str:
@@ -166,6 +307,7 @@ def render_markdown(
     lines.append(f"- Workflow run ID: `{run_id or 'unknown'}`")
     lines.append(f"- Files scanned: `{len(scanned_files)}`")
     lines.append(f"- Findings: `{len(findings)}`")
+    lines.append(f"- Failed jobs from metadata: `{len(failed_jobs)}`")
     lines.append("")
 
     lines.append("## Important limitation")
@@ -173,6 +315,32 @@ def render_markdown(
     lines.append("This report is deterministic and rule-based. It does not call an LLM and does not prove root cause by itself.")
     lines.append("Use it as an evidence index and triage aid. Confirm conclusions against workflow logs, artifacts, repository code, and verifier scripts.")
     lines.append("")
+
+    if jobs_parse_warning:
+        lines.append("## Jobs metadata warning")
+        lines.append("")
+        lines.append(f"- {jobs_parse_warning}")
+        lines.append("")
+
+    lines.append("## Failed jobs and steps")
+    lines.append("")
+    if not failed_jobs:
+        lines.append("No failed job metadata was found in `jobs.json`.")
+        lines.append("")
+    else:
+        lines.append("| Job | Conclusion | Status | Failed steps | Job URL |")
+        lines.append("|---|---|---|---|---|")
+        for job in failed_jobs:
+            job_link = f"[open]({job.url})" if job.url else ""
+            lines.append(
+                "| "
+                f"`{markdown_escape_cell(job.name)}` | "
+                f"`{markdown_escape_cell(job.conclusion)}` | "
+                f"`{markdown_escape_cell(job.status)}` | "
+                f"{markdown_escape_cell(render_failed_steps(job.failed_steps))} | "
+                f"{job_link} |"
+            )
+        lines.append("")
 
     if not scanned_files:
         lines.append("## Result")
@@ -211,8 +379,8 @@ def render_markdown(
     lines.append("| Severity | Category | Evidence | Recommendation |")
     lines.append("|---|---|---|---|")
     for finding in findings[:50]:
-        evidence = finding.evidence.replace("|", "\\|")
-        recommendation = finding.recommendation.replace("|", "\\|")
+        evidence = markdown_escape_cell(finding.evidence)
+        recommendation = markdown_escape_cell(finding.recommendation)
         lines.append(f"| `{finding.severity}` | `{finding.category}` | `{evidence}` | {recommendation} |")
     if len(findings) > 50:
         lines.append(f"| `info` | `truncated` | `{len(findings) - 50}` additional findings omitted | Inspect raw logs. |")
@@ -253,16 +421,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Analyze GitHub Actions logs with deterministic rules.")
     parser.add_argument("--logs-dir", required=True, type=pathlib.Path, help="Directory or file containing logs to scan")
     parser.add_argument("--output", required=True, type=pathlib.Path, help="Markdown output path")
+    parser.add_argument("--jobs-json", type=pathlib.Path, default=None, help="Optional GitHub Actions jobs metadata JSON")
     parser.add_argument("--run-id", default=None, help="GitHub Actions workflow run ID")
     parser.add_argument("--repository", default=None, help="Repository full name")
     parser.add_argument("--max-chars-per-file", type=int, default=250_000, help="Maximum characters read from each log file")
     args = parser.parse_args()
 
     findings, category_counts, scanned_files = analyze(args.logs_dir, args.max_chars_per_file)
+    failed_jobs, jobs_parse_warning = parse_failed_jobs(args.jobs_json)
     report = render_markdown(
         findings=findings,
         category_counts=category_counts,
         scanned_files=scanned_files,
+        failed_jobs=failed_jobs,
+        jobs_parse_warning=jobs_parse_warning,
         run_id=args.run_id,
         repository=args.repository,
     )
@@ -270,6 +442,9 @@ def main() -> int:
     args.output.write_text(report + "\n", encoding="utf-8")
     print(f"Wrote diagnostics report to {args.output}")
     print(f"Findings: {len(findings)}")
+    print(f"Failed jobs from metadata: {len(failed_jobs)}")
+    if jobs_parse_warning:
+        print(f"Jobs metadata warning: {jobs_parse_warning}")
     return 0
 
 
