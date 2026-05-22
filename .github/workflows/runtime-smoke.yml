@@ -1,0 +1,92 @@
+name: Runtime Smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/runtime-smoke.yml"
+      - "docker-compose.yml"
+      - "docker-compose.s001.yml"
+      - "docker-compose.s002.yml"
+      - "api-gateway/**"
+      - "orders-service/**"
+      - "payments-service/**"
+      - "scripts/verify-milestone-1.sh"
+      - "scripts/run-local.sh"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/runtime-smoke.yml"
+      - "docker-compose.yml"
+      - "docker-compose.s001.yml"
+      - "docker-compose.s002.yml"
+      - "api-gateway/**"
+      - "orders-service/**"
+      - "payments-service/**"
+      - "scripts/verify-milestone-1.sh"
+      - "scripts/run-local.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime-smoke:
+    name: Default runtime smoke verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Docker Compose version
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker --version
+          docker compose version
+
+      - name: Validate required smoke script
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -f scripts/verify-milestone-1.sh ]; then
+            echo "Missing scripts/verify-milestone-1.sh"
+            exit 1
+          fi
+
+          chmod +x scripts/verify-milestone-1.sh
+
+      - name: Start default runtime and run smoke verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            docker compose logs --no-color > runtime-smoke-logs.txt || true
+            docker compose ps > runtime-smoke-ps.txt || true
+            docker compose down -v --remove-orphans || true
+          }
+          trap cleanup EXIT
+
+          docker compose up -d --build
+          ./scripts/verify-milestone-1.sh
+
+      - name: Upload runtime smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-smoke-diagnostics
+          path: |
+            runtime-smoke-logs.txt
+            runtime-smoke-ps.txt
+          if-no-files-found: ignore
+          retention-days: 7

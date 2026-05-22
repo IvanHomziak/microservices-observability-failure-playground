@@ -1,0 +1,106 @@
+name: Docker Compose Contracts
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/compose-contracts.yml"
+      - "docker-compose*.yml"
+      - "observability/**"
+      - "scenarios/**"
+      - "scripts/**"
+      - "*/Dockerfile"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/compose-contracts.yml"
+      - "docker-compose*.yml"
+      - "observability/**"
+      - "scenarios/**"
+      - "scripts/**"
+      - "*/Dockerfile"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-contracts-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compose-contracts:
+    name: Validate Docker Compose contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Docker Compose version
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker --version
+          docker compose version
+
+      - name: Validate base Compose contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose config
+
+      - name: Validate scenario Compose overrides
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          declare -A profiles_by_file=(
+            [docker-compose.s001.yml]=""
+            [docker-compose.s002.yml]=""
+            [docker-compose.s003.yml]=""
+            [docker-compose.s004.yml]="kafka"
+            [docker-compose.s005.yml]="kafka"
+            [docker-compose.s006.yml]="async"
+            [docker-compose.s007.yml]=""
+            [docker-compose.s008.yml]=""
+          )
+
+          for compose_file in "${!profiles_by_file[@]}"; do
+            if [ ! -f "$compose_file" ]; then
+              echo "Skipping missing optional compose override: $compose_file"
+              continue
+            fi
+
+            profile="${profiles_by_file[$compose_file]}"
+            echo "Validating $compose_file profile=${profile:-default}"
+
+            if [ -n "$profile" ]; then
+              docker compose -f docker-compose.yml -f "$compose_file" --profile "$profile" config
+            else
+              docker compose -f docker-compose.yml -f "$compose_file" config
+            fi
+          done
+
+      - name: Validate optional integration Compose profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f docker-compose.kafka.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.kafka.yml --profile kafka config
+          fi
+
+          if [ -f docker-compose.notification.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.notification.yml --profile async config
+          fi
+
+          if [ -f docker-compose.audit.yml ]; then
+            docker compose -f docker-compose.yml -f docker-compose.audit.yml --profile async config
+          fi
+
+          docker compose --profile observability config
+          docker compose --profile full config
