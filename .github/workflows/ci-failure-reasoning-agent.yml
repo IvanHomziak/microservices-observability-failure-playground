@@ -1,0 +1,118 @@
+name: CI Failure Reasoning Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "GitHub Actions workflow run ID to reason about"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ci-failure-reasoning-agent-${{ github.workflow }}-${{ github.ref }}-${{ inputs.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  generate-reasoning-report:
+    name: Generate read-only reasoning report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate agent package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd agents/ci_failure_reasoning_agent
+          python -m compileall src tests
+          python -m unittest discover -s tests
+
+      - name: Collect workflow evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p triage/raw triage/logs triage/downloaded-artifacts triage/output reasoning/output
+
+          gh run view "$RUN_ID" --repo "$REPOSITORY" --json \
+            databaseId,displayTitle,event,headBranch,headSha,name,status,conclusion,createdAt,updatedAt,url \
+            > triage/raw/run.json
+
+          gh run view "$RUN_ID" --repo "$REPOSITORY" --json jobs \
+            > triage/raw/jobs.json
+
+          if gh run download "$RUN_ID" --repo "$REPOSITORY" --dir triage/downloaded-artifacts; then
+            echo "Downloaded workflow artifacts for run ${RUN_ID}"
+          else
+            echo "No workflow artifacts downloaded or artifact download failed; continuing"
+          fi
+
+          if gh run view "$RUN_ID" --repo "$REPOSITORY" --log > triage/logs/workflow-run.log; then
+            echo "Downloaded workflow run logs"
+          else
+            echo "Could not download workflow run logs; continuing with metadata only"
+            touch triage/logs/workflow-run.log
+          fi
+
+      - name: Generate deterministic diagnostics and fix plan
+        shell: bash
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          python3 scripts/analyze-ci-failure.py \
+            --logs-dir triage \
+            --jobs-json triage/raw/jobs.json \
+            --output triage/output/ci-failure-diagnostics-report.md \
+            --run-id "$RUN_ID" \
+            --repository "$REPOSITORY"
+
+          python3 scripts/generate-agent-fix-plan.py \
+            --diagnostics-report triage/output/ci-failure-diagnostics-report.md \
+            --run-json triage/raw/run.json \
+            --jobs-json triage/raw/jobs.json \
+            --output triage/output/agent-fix-plan.md
+
+      - name: Generate read-only agent diagnostic report
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="agents/ci_failure_reasoning_agent/src" \
+            python -m ci_failure_reasoning_agent.main \
+              --evidence-dir triage \
+              --repository-root . \
+              --output reasoning/output/agent-diagnostic-report.md
+
+          cat reasoning/output/agent-diagnostic-report.md
+
+      - name: Upload reasoning artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-reasoning-agent-${{ inputs.run_id }}
+          path: |
+            reasoning/output/agent-diagnostic-report.md
+            triage/output/ci-failure-diagnostics-report.md
+            triage/output/agent-fix-plan.md
+            triage/raw/*.json
+            triage/logs/*.log
+            triage/downloaded-artifacts/**
+          if-no-files-found: error
+          retention-days: 14
