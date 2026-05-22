@@ -4,7 +4,7 @@
 
 This document describes the read-only CI Failure Reasoning Agent scaffold.
 
-The agent converts a bounded CI evidence pack into a structured diagnostic report.
+The agent converts a bounded CI evidence pack into structured diagnostic outputs.
 
 It is intentionally conservative:
 
@@ -40,6 +40,7 @@ Reasoning provider abstraction
         |
         v
 agent-diagnostic-report.md
+agent-diagnostic-report.json
 ```
 
 ## Files
@@ -48,6 +49,7 @@ agent-diagnostic-report.md
 |---|---|
 | `agents/ci_failure_reasoning_agent/` | Python package scaffold |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/evidence_loader.py` | Loads bounded evidence pack |
+| `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/output_schema.py` | Validates structured JSON output contract |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/prompt_builder.py` | Builds audit-friendly bounded prompt artifact |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/providers.py` | Provider abstraction and deterministic provider |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/reasoner.py` | Deterministic reasoning layer |
@@ -94,6 +96,33 @@ external
 
 Those aliases intentionally fail closed. A real external provider must be added in a separate PR with explicit security review, protected environment configuration, structured output validation, and no PR write permissions.
 
+## Structured JSON output contract
+
+The agent emits:
+
+```text
+agent-diagnostic-report.json
+```
+
+Current schema version:
+
+```text
+1.0
+```
+
+The contract validates:
+
+- required fields;
+- expected field types;
+- allowed confidence values: `low`, `medium`, `high`;
+- non-empty evidence/recommendation lists;
+- non-blank string fields;
+- explicit safety boundary.
+
+The validation is implemented without adding third-party schema dependencies.
+
+This JSON contract is the boundary future LLM providers must satisfy. A model output should not be trusted unless it validates against this contract.
+
 ## Prompt artifact
 
 The CLI can generate:
@@ -121,6 +150,7 @@ Generated files:
 
 ```text
 agent-diagnostic-report.md
+agent-diagnostic-report.json
 reasoning-prompt.md
 ```
 
@@ -152,6 +182,7 @@ python -m ci_failure_reasoning_agent.main \
   --repository-root . \
   --provider deterministic \
   --output reasoning/output/agent-diagnostic-report.md \
+  --json-output reasoning/output/agent-diagnostic-report.json \
   --prompt-output reasoning/output/reasoning-prompt.md
 ```
 
@@ -176,6 +207,7 @@ ci-failure-reasoning-agent-<run_id>
 
 ```text
 agent-diagnostic-report.md
+agent-diagnostic-report.json
 reasoning-prompt.md
 ```
 
@@ -228,7 +260,6 @@ Known limitations:
 - deterministic provider only;
 - external provider aliases fail closed;
 - no active LLM API call;
-- no structured JSON output schema yet;
 - no code patch generation;
 - no source-code search beyond bounded evidence;
 - no Surefire XML parsing inside the reasoning package;
@@ -250,4 +281,4 @@ v5: patch proposal artifact, no commit
 v6: human-approved PR creation with strict permissions
 ```
 
-The next safe step after this provider abstraction is structured output schema validation. That should happen before any real LLM provider is enabled.
+The next safe step after structured output validation is an optional LLM provider over bounded evidence. It must remain manual-only, read-only, environment-protected, and validated against the same JSON contract before any output is trusted.

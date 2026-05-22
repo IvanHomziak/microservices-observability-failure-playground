@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from ci_failure_reasoning_agent.evidence_loader import load_evidence_pack
+from ci_failure_reasoning_agent.output_schema import contract_from_report, validate_contract
 from ci_failure_reasoning_agent.prompt_builder import build_reasoning_prompt
 from ci_failure_reasoning_agent.providers import get_provider
 from ci_failure_reasoning_agent.reasoner import reason
@@ -189,6 +190,34 @@ class TestReasoningAgent(unittest.TestCase):
 
             with self.assertRaises(RuntimeError):
                 provider.generate(prompt=prompt, deterministic_report=report)
+
+    def test_structured_output_contract_is_valid(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tmp_path = Path(temp_dir)
+            pack = create_maven_failure_pack(tmp_path)
+            report = reason(pack)
+            contract = contract_from_report(report)
+
+            self.assertEqual("1.0", contract["schema_version"])
+            self.assertEqual("medium", contract["confidence"])
+            self.assertFalse(validate_contract(contract))
+            self.assertIn("safety_boundary", contract)
+
+    def test_structured_output_contract_rejects_invalid_confidence(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tmp_path = Path(temp_dir)
+            pack = create_maven_failure_pack(tmp_path)
+            report = reason(pack)
+            contract = contract_from_report(report)
+            contract["confidence"] = "certain"
+
+            errors = validate_contract(contract)
+
+            self.assertTrue(any("Invalid confidence value" in error for error in errors))
 
 
 if __name__ == "__main__":
