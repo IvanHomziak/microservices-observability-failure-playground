@@ -40,7 +40,19 @@ RULES: list[tuple[str, str, re.Pattern[str], str]] = [
     (
         "docker-compose-contract-failure",
         "high",
-        re.compile(r"docker compose .*config|services\..* Additional property|yaml:|invalid compose|no such service", re.IGNORECASE),
+        re.compile(
+            r"services\..*Additional property|"
+            r"yaml:|"
+            r"invalid compose|"
+            r"no such service|"
+            r"service .* has neither an image nor a build context|"
+            r"error while interpolating|"
+            r"failed to solve|"
+            r"failed to read .*docker-compose|"
+            r"compose file .* is invalid|"
+            r"unsupported config option",
+            re.IGNORECASE,
+        ),
         "Run the exact docker compose config command locally and fix the base or override Compose contract.",
     ),
     (
