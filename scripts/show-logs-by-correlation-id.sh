@@ -13,4 +13,3 @@ docker compose logs --no-color api-gateway orders-service payments-service inven
   | grep -nF "${CORRELATION_ID}" || true
 
 echo "[logs] Grafana Explore: http://localhost:3000/explore"
-echo "[logs] Loki query: {service_name=~\"api-gateway|orders-service|payments-service|inventory-service|notification-service|audit-service\"} |= \"${CORRELATION_ID}\""
