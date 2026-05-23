@@ -1,9 +1,12 @@
 [project]
 name = "unit-test-coverage-agent"
-version = "0.1.0"
-description = "Deterministic unit test coverage evidence agent scaffold"
+version = "0.2.0"
+description = "Unit test coverage evidence and optional LangChain reasoning agent"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+  "langchain>=0.3.0",
+  "langchain-openai>=0.2.0"
+]
 
 [project.scripts]
 unit-test-coverage-agent = "unit_test_coverage_agent.main:main"
