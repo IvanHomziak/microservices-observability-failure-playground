@@ -5,7 +5,8 @@ from typing import Any
 
 from .models import CoverageAssessment, as_jsonable
 
-ALLOWED_COVERAGE_STATUS = {"sufficient", "insufficient", "unknown", "not_applicable"}
+ALLOWED_COVERAGE_STATUS = {"sufficient", "insufficient", "partial", "unknown", "not_applicable"}
+ALLOWED_CLASS_COVERAGE_STATUS = {"covered", "partial", "uncovered", "unknown"}
 ALLOWED_CONFIDENCE = {"low", "medium", "high"}
 ALLOWED_MERGE_RECOMMENDATION = {"approve", "block", "manual_review"}
 
@@ -17,7 +18,9 @@ REQUIRED_FIELDS: dict[str, type] = {
     "changed_services": list,
     "surefire_reports_found": int,
     "jacoco_reports_found": int,
+    "changed_class_coverage": list,
     "covered_classes": list,
+    "partially_covered_classes": list,
     "uncovered_classes": list,
     "unknown_coverage_files": list,
     "missing_test_scenarios": list,
@@ -26,6 +29,17 @@ REQUIRED_FIELDS: dict[str, type] = {
     "blocking_reasons": list,
     "merge_recommendation": str,
     "safety_boundary": str,
+}
+
+REQUIRED_CHANGED_CLASS_FIELDS: dict[str, type] = {
+    "source_file": str,
+    "expected_class_name": str,
+    "status": str,
+    "lines_covered": int,
+    "lines_missed": int,
+    "methods_covered": int,
+    "methods_missed": int,
+    "uncovered_methods": list,
 }
 
 
@@ -67,6 +81,28 @@ def validate_contract(payload: dict[str, Any]) -> list[str]:
             for index, item in enumerate(value):
                 if not isinstance(item, str) or not item.strip():
                     errors.append(f"Invalid list item for {field}[{index}]")
+
+    changed_class_coverage = payload.get("changed_class_coverage")
+    if isinstance(changed_class_coverage, list):
+        for index, item in enumerate(changed_class_coverage):
+            if not isinstance(item, dict):
+                errors.append(f"Invalid changed_class_coverage[{index}]: expected object")
+                continue
+            for field, expected_type in REQUIRED_CHANGED_CLASS_FIELDS.items():
+                if field not in item:
+                    errors.append(f"Missing changed_class_coverage[{index}].{field}")
+                    continue
+                if not isinstance(item[field], expected_type):
+                    errors.append(
+                        f"Invalid type for changed_class_coverage[{index}].{field}: expected {expected_type.__name__}"
+                    )
+            status = item.get("status")
+            if isinstance(status, str) and status not in ALLOWED_CLASS_COVERAGE_STATUS:
+                errors.append(f"Invalid changed_class_coverage[{index}].status: {status}")
+            for percent_field in ("line_coverage_percent", "branch_coverage_percent", "method_coverage_percent"):
+                value = item.get(percent_field)
+                if value is not None and not isinstance(value, (int, float)):
+                    errors.append(f"Invalid changed_class_coverage[{index}].{percent_field}: expected number or null")
 
     boundary = payload.get("safety_boundary")
     if isinstance(boundary, str) and "does not authorize code mutation" not in boundary:
