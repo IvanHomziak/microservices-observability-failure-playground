@@ -121,7 +121,9 @@ jobs:
               --provider "${{ inputs.provider }}" \
               --output coverage-agent/output/unit-test-coverage-report.md \
               --json-output coverage-agent/output/unit-test-coverage-report.json \
-              --prompt-output coverage-agent/output/coverage-reasoning-prompt.md
+              --prompt-output coverage-agent/output/coverage-reasoning-prompt.md \
+              --patch-proposal-output coverage-agent/output/unit-test-coverage-patch-proposal.md \
+              --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json
 
           git diff --name-only "${{ inputs.base_ref }}...${{ inputs.head_ref }}" > coverage-agent/raw/changed-files.txt
           find . -path "*/target/surefire-reports/TEST-*.xml" -type f -print > coverage-agent/raw/surefire-files.txt || true
@@ -131,6 +133,7 @@ jobs:
           fi
 
           cat coverage-agent/output/unit-test-coverage-report.md
+          cat coverage-agent/output/unit-test-coverage-patch-proposal.md
 
       - name: Upload coverage agent artifacts
         uses: actions/upload-artifact@v4
@@ -139,6 +142,8 @@ jobs:
           path: |
             coverage-agent/output/unit-test-coverage-report.md
             coverage-agent/output/unit-test-coverage-report.json
+            coverage-agent/output/unit-test-coverage-patch-proposal.md
+            coverage-agent/output/unit-test-coverage-patch-proposal.json
             coverage-agent/output/coverage-reasoning-prompt.md
             coverage-agent/raw/*.txt
             */target/surefire-reports/TEST-*.xml
