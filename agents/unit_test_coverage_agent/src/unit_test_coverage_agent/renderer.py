@@ -14,6 +14,39 @@ def _append_list(lines: list[str], title: str, values: list[str]) -> None:
     lines.append("")
 
 
+def _format_percent(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value}%"
+
+
+def _append_changed_class_coverage(lines: list[str], payload: dict[str, Any]) -> None:
+    lines.append("## Changed class coverage")
+    lines.append("")
+    rows = payload.get("changed_class_coverage", [])
+    if not rows:
+        lines.append("No changed production classes detected.")
+        lines.append("")
+        return
+
+    lines.append("| Source file | Expected class | Status | Line % | Method % | Branch % | Uncovered methods |")
+    lines.append("|---|---|---:|---:|---:|---:|---|")
+    for row in rows:
+        uncovered_methods = row.get("uncovered_methods") or []
+        uncovered_text = ", ".join(f"`{method}`" for method in uncovered_methods) if uncovered_methods else "-"
+        lines.append(
+            "| "
+            f"`{row.get('source_file', '')}` | "
+            f"`{row.get('expected_class_name', '')}` | "
+            f"`{row.get('status', '')}` | "
+            f"{_format_percent(row.get('line_coverage_percent'))} | "
+            f"{_format_percent(row.get('method_coverage_percent'))} | "
+            f"{_format_percent(row.get('branch_coverage_percent'))} | "
+            f"{uncovered_text} |"
+        )
+    lines.append("")
+
+
 def render_markdown(payload: dict[str, Any]) -> str:
     lines: list[str] = []
     lines.append("# Unit Test Coverage Agent Report")
@@ -30,7 +63,9 @@ def render_markdown(payload: dict[str, Any]) -> str:
     _append_list(lines, "Changed services", payload["changed_services"])
     _append_list(lines, "Changed production files", payload["changed_production_files"])
     _append_list(lines, "Changed test files", payload["changed_test_files"])
+    _append_changed_class_coverage(lines, payload)
     _append_list(lines, "Covered classes", payload["covered_classes"])
+    _append_list(lines, "Partially covered classes", payload["partially_covered_classes"])
     _append_list(lines, "Uncovered classes", payload["uncovered_classes"])
     _append_list(lines, "Unknown coverage files", payload["unknown_coverage_files"])
     _append_list(lines, "Missing test scenarios", payload["missing_test_scenarios"])
