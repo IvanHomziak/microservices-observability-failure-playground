@@ -15,6 +15,7 @@ from unit_test_coverage_agent.git_diff import classify_file
 from unit_test_coverage_agent.jacoco_loader import load_jacoco_evidence
 from unit_test_coverage_agent.models import GitDiffEvidence
 from unit_test_coverage_agent.output_schema import assessment_to_contract, validate_contract
+from unit_test_coverage_agent.patch_proposal import build_patch_proposal, patch_proposal_to_dict, render_patch_proposal_markdown
 from unit_test_coverage_agent.prompt_builder import build_coverage_reasoning_prompt
 from unit_test_coverage_agent.providers import get_provider
 from unit_test_coverage_agent.renderer import render_markdown
@@ -193,6 +194,24 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(RuntimeError):
                 provider.refine(contract)
+
+    def test_patch_proposal_generated_for_partial_coverage(self) -> None:
+        contract = build_partial_contract()
+        proposal = build_patch_proposal(contract)
+        payload = patch_proposal_to_dict(proposal)
+        markdown = render_patch_proposal_markdown(proposal)
+
+        self.assertEqual("proposal_available", payload["proposal_status"])
+        self.assertEqual("manual_review", payload["merge_recommendation"])
+        self.assertEqual(1, len(payload["proposed_test_scenarios"]))
+        scenario = payload["proposed_test_scenarios"][0]
+        self.assertEqual("com.example.OrderService", scenario["production_class"])
+        self.assertEqual("orders-service/src/test/java/com/example/OrderServiceTest.java", scenario["suggested_test_file"])
+        self.assertIn("shouldCoverCancelOrder", scenario["suggested_test_methods"])
+        self.assertIn("cd orders-service && mvn -B -ntp verify", payload["validation_commands"])
+        self.assertIn("does not authorize code mutation", payload["safety_boundary"])
+        self.assertIn("Unit Test Coverage Patch Proposal", markdown)
+        self.assertIn("shouldCoverCancelOrder", markdown)
 
 
 if __name__ == "__main__":
