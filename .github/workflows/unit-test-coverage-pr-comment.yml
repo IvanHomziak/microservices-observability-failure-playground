@@ -12,44 +12,34 @@ on:
         required: true
         default: false
         type: boolean
-      provider:
-        description: "Coverage reasoning provider"
-        required: true
-        default: "deterministic"
-        type: choice
-        options:
-          - deterministic
-          - langchain-openai
-      model:
-        description: "Optional model name for provider=langchain-openai"
-        required: false
-        default: "gpt-4.1-mini"
-        type: string
 
 permissions:
   contents: read
-  actions: read
-  pull-requests: write
-  issues: write
 
 concurrency:
-  group: unit-test-coverage-pr-comment-${{ github.workflow }}-${{ inputs.pr_number }}-${{ inputs.provider }}
+  group: unit-test-coverage-pr-comment-${{ github.workflow }}-${{ inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
-  generate-and-comment:
-    name: Generate coverage evidence and comment on PR
+  generate-coverage-evidence:
+    name: Generate coverage evidence without write credentials
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
 
     steps:
-      - name: Checkout repository
+      - name: Checkout trusted agent code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          path: agent-repo
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: Resolve pull request refs
         shell: bash
+        working-directory: agent-repo
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pr_number }}
@@ -57,56 +47,43 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p coverage-agent/raw coverage-agent/output
+          mkdir -p ../coverage-agent/raw ../coverage-agent/output
 
           gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json \
             number,title,headRefName,headRefOid,baseRefName,baseRefOid,url,isCrossRepository \
-            > coverage-agent/raw/pr.json
+            > ../coverage-agent/raw/pr.json
 
-          head_sha=$(python - <<'PY'
+          base_branch=$(python - <<'PY'
           import json
-          data = json.load(open('coverage-agent/raw/pr.json'))
-          print(data['headRefOid'])
-          PY
-          )
-          base_ref=$(python - <<'PY'
-          import json
-          data = json.load(open('coverage-agent/raw/pr.json'))
-          print('origin/' + data['baseRefName'])
+          data = json.load(open('../coverage-agent/raw/pr.json'))
+          print(data['baseRefName'])
           PY
           )
 
-          echo "HEAD_SHA=$head_sha" >> "$GITHUB_ENV"
-          echo "BASE_REF=$base_ref" >> "$GITHUB_ENV"
+          echo "BASE_REF=origin/${base_branch}" >> "$GITHUB_ENV"
+          echo "HEAD_REF=HEAD" >> "$GITHUB_ENV"
 
-          git fetch origin "$head_sha"
-          git checkout --detach "$head_sha"
-          git fetch origin "${base_ref#origin/}"
+          git fetch origin "$base_branch"
+          git fetch origin "refs/pull/${PR_NUMBER}/head:refs/remotes/pull/${PR_NUMBER}/head"
+          git worktree add ../pr-worktree "refs/remotes/pull/${PR_NUMBER}/head"
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Validate coverage agent package
+      - name: Validate trusted coverage agent package
         shell: bash
+        working-directory: agent-repo/agents/unit_test_coverage_agent
         run: |
           set -euo pipefail
-          cd agents/unit_test_coverage_agent
           python -m compileall src tests
           python -m unittest discover -s tests
 
-      - name: Install LangChain dependencies when requested
-        if: ${{ inputs.provider == 'langchain-openai' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip install --upgrade pip
-          python -m pip install ./agents/unit_test_coverage_agent
-
-      - name: Optionally run Maven tests and JaCoCo reports
+      - name: Optionally run Maven tests and JaCoCo reports without secrets or write credentials
         if: ${{ inputs.run_tests }}
         shell: bash
+        working-directory: pr-worktree
         run: |
           set -euo pipefail
 
@@ -132,38 +109,81 @@ jobs:
           done
 
           if [ ${#failed_services[@]} -gt 0 ]; then
-            printf '%s\n' "${failed_services[@]}" > coverage-agent/raw/maven-failed-services.txt
+            printf '%s\n' "${failed_services[@]}" > ../coverage-agent/raw/maven-failed-services.txt
           fi
 
-      - name: Generate coverage artifacts
+      - name: Generate deterministic coverage artifacts with trusted agent code
         shell: bash
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
 
-          PYTHONPATH="agents/unit_test_coverage_agent/src" \
+          PYTHONPATH="agent-repo/agents/unit_test_coverage_agent/src" \
             python -m unit_test_coverage_agent.main \
-              --repository-root . \
+              --repository-root pr-worktree \
               --base-ref "$BASE_REF" \
-              --head-ref "$HEAD_SHA" \
-              --provider "${{ inputs.provider }}" \
+              --head-ref "$HEAD_REF" \
+              --provider deterministic \
               --output coverage-agent/output/unit-test-coverage-report.md \
               --json-output coverage-agent/output/unit-test-coverage-report.json \
               --prompt-output coverage-agent/output/coverage-reasoning-prompt.md \
               --patch-proposal-output coverage-agent/output/unit-test-coverage-patch-proposal.md \
               --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json
 
-          git diff --name-only "$BASE_REF...$HEAD_SHA" > coverage-agent/raw/changed-files.txt
-          find . -path "*/target/surefire-reports/TEST-*.xml" -type f -print > coverage-agent/raw/surefire-files.txt || true
-          find . -path "*/target/site/jacoco/jacoco.xml" -type f -print > coverage-agent/raw/jacoco-files.txt || true
+          git -C pr-worktree diff --name-only "$BASE_REF...$HEAD_REF" > coverage-agent/raw/changed-files.txt
+          find pr-worktree -path "*/target/surefire-reports/TEST-*.xml" -type f -print > coverage-agent/raw/surefire-files.txt || true
+          find pr-worktree -path "*/target/site/jacoco/jacoco.xml" -type f -print > coverage-agent/raw/jacoco-files.txt || true
 
-      - name: Render PR comment
+      - name: Upload deterministic coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-coverage-pr-comment-input-${{ inputs.pr_number }}-${{ github.run_id }}
+          path: |
+            coverage-agent/output/unit-test-coverage-report.md
+            coverage-agent/output/unit-test-coverage-report.json
+            coverage-agent/output/unit-test-coverage-patch-proposal.md
+            coverage-agent/output/unit-test-coverage-patch-proposal.json
+            coverage-agent/output/coverage-reasoning-prompt.md
+            coverage-agent/raw/*.json
+            coverage-agent/raw/*.txt
+            pr-worktree/*/target/surefire-reports/TEST-*.xml
+            pr-worktree/*/target/site/jacoco/jacoco.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  update-pr-comment:
+    name: Render and update PR comment with write credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: generate-coverage-evidence
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout trusted agent code
+        uses: actions/checkout@v4
+        with:
+          path: agent-repo
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download deterministic coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: unit-test-coverage-pr-comment-input-${{ inputs.pr_number }}-${{ github.run_id }}
+          path: coverage-agent
+
+      - name: Render PR comment from validated artifacts
         shell: bash
         run: |
           set -euo pipefail
-          PYTHONPATH="agents/unit_test_coverage_agent/src" \
+          PYTHONPATH="agent-repo/agents/unit_test_coverage_agent/src" \
             python -m unit_test_coverage_agent.pr_comment \
               --coverage-json coverage-agent/output/unit-test-coverage-report.json \
               --patch-proposal-json coverage-agent/output/unit-test-coverage-patch-proposal.json \
@@ -171,30 +191,48 @@ jobs:
 
           cat coverage-agent/output/pr-comment.md
 
-      - name: Post PR comment
+      - name: Create or update PR comment
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pr_number }}
           REPOSITORY: ${{ github.repository }}
+          COMMENT_MARKER: "<!-- unit-test-coverage-agent-comment -->"
         run: |
           set -euo pipefail
-          gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body-file coverage-agent/output/pr-comment.md
 
-      - name: Upload coverage comment artifacts
+          comments_file=$(mktemp)
+          gh api \
+            --paginate \
+            "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\") | select(.body | contains(env.COMMENT_MARKER)) | .id" \
+            > "$comments_file"
+
+          comment_id=$(head -n 1 "$comments_file")
+
+          if [ -n "$comment_id" ]; then
+            echo "Updating existing coverage agent comment: $comment_id"
+            gh api \
+              --method PATCH \
+              "repos/${REPOSITORY}/issues/comments/${comment_id}" \
+              --field body="$(cat coverage-agent/output/pr-comment.md)"
+          else
+            echo "Creating new coverage agent comment"
+            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body-file coverage-agent/output/pr-comment.md
+          fi
+
+      - name: Upload rendered PR comment artifact
         uses: actions/upload-artifact@v4
         with:
-          name: unit-test-coverage-pr-comment-${{ inputs.pr_number }}-${{ github.run_id }}-${{ inputs.provider }}
+          name: unit-test-coverage-pr-comment-${{ inputs.pr_number }}-${{ github.run_id }}
           path: |
+            coverage-agent/output/pr-comment.md
             coverage-agent/output/unit-test-coverage-report.md
             coverage-agent/output/unit-test-coverage-report.json
             coverage-agent/output/unit-test-coverage-patch-proposal.md
             coverage-agent/output/unit-test-coverage-patch-proposal.json
             coverage-agent/output/coverage-reasoning-prompt.md
-            coverage-agent/output/pr-comment.md
             coverage-agent/raw/*.json
             coverage-agent/raw/*.txt
-            */target/surefire-reports/TEST-*.xml
-            */target/site/jacoco/jacoco.xml
           if-no-files-found: warn
           retention-days: 14
