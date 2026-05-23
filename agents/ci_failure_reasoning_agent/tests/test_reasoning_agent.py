@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PACKAGE_ROOT / "src"))
 
 from ci_failure_reasoning_agent.evidence_loader import load_evidence_pack
 from ci_failure_reasoning_agent.output_schema import contract_from_report, validate_contract
