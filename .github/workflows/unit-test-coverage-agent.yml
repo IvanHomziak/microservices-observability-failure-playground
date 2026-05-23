@@ -14,7 +14,7 @@ on:
         default: "HEAD"
         type: string
       run_tests:
-        description: "Run Maven tests before collecting evidence"
+        description: "Run Maven tests and generate JaCoCo XML before collecting evidence"
         required: true
         default: false
         type: boolean
@@ -31,7 +31,7 @@ jobs:
   generate-coverage-evidence:
     name: Generate unit test coverage evidence
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -52,7 +52,7 @@ jobs:
           python -m compileall src tests
           python -m unittest discover -s tests
 
-      - name: Optionally run Maven tests
+      - name: Optionally run Maven tests and JaCoCo reports
         if: ${{ inputs.run_tests }}
         shell: bash
         run: |
@@ -67,12 +67,21 @@ jobs:
             audit-service
           )
 
+          failed_services=()
+
           for service in "${services[@]}"; do
             if [ -f "$service/pom.xml" ]; then
-              echo "Running tests for $service"
-              (cd "$service" && mvn -B -ntp test || true)
+              echo "Running Maven verify for $service to generate Surefire and JaCoCo evidence"
+              if ! (cd "$service" && mvn -B -ntp verify); then
+                echo "Maven verify failed for $service; continuing to collect available evidence"
+                failed_services+=("$service")
+              fi
             fi
           done
+
+          if [ ${#failed_services[@]} -gt 0 ]; then
+            printf '%s\n' "${failed_services[@]}" > coverage-agent-maven-failed-services.txt
+          fi
 
       - name: Generate coverage report
         shell: bash
@@ -91,6 +100,9 @@ jobs:
           git diff --name-only "${{ inputs.base_ref }}...${{ inputs.head_ref }}" > coverage-agent/raw/changed-files.txt
           find . -path "*/target/surefire-reports/TEST-*.xml" -type f -print > coverage-agent/raw/surefire-files.txt || true
           find . -path "*/target/site/jacoco/jacoco.xml" -type f -print > coverage-agent/raw/jacoco-files.txt || true
+          if [ -f coverage-agent-maven-failed-services.txt ]; then
+            cp coverage-agent-maven-failed-services.txt coverage-agent/raw/maven-failed-services.txt
+          fi
 
           cat coverage-agent/output/unit-test-coverage-report.md
 
