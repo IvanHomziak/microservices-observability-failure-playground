@@ -26,13 +26,28 @@ Manual inputs:
 ```text
 pr_number
 run_tests
-provider
-model
 ```
 
 ## Permissions
 
-This workflow uses scoped write permissions only for commenting:
+Top-level permissions are read-only:
+
+```yaml
+permissions:
+  contents: read
+```
+
+The workflow is split into two jobs.
+
+Evidence generation job:
+
+```yaml
+permissions:
+  contents: read
+  actions: read
+```
+
+Comment update job:
 
 ```yaml
 permissions:
@@ -44,19 +59,54 @@ permissions:
 
 The main `Unit Test Coverage Agent` workflow remains read-only.
 
+## Security model
+
+The workflow separates untrusted PR analysis from write-scoped commenting.
+
+Evidence job:
+
+```text
+- uses trusted agent code from the default branch
+- fetches PR head through refs/pull/<number>/head
+- runs optional Maven tests in the PR worktree
+- has no secrets
+- has no PR/issue write permissions
+- uses deterministic provider only
+```
+
+Comment job:
+
+```text
+- runs only after evidence job completes
+- checks out trusted default-branch agent code
+- downloads deterministic JSON artifacts
+- validates coverage JSON before rendering the comment
+- has PR/issue write permissions only for comment creation/update
+- does not execute PR-head code
+```
+
 ## Flow
 
 ```text
 manual workflow_dispatch
         |
         v
-resolve PR base/head refs
+checkout trusted default-branch agent code
         |
         v
-checkout PR head commit
+fetch PR head via refs/pull/<number>/head
         |
         v
-generate coverage artifacts
+create isolated PR worktree
+        |
+        v
+generate deterministic coverage artifacts without secrets/write credentials
+        |
+        v
+upload artifacts
+        |
+        v
+trusted comment job downloads artifacts
         |
         v
 render comment from validated JSON artifacts
@@ -130,6 +180,8 @@ The workflow must not:
 
 - run automatically on `pull_request`;
 - run on `pull_request_target`;
+- expose secrets to PR-head code;
+- run PR-head code with PR/issue write permissions;
 - mutate code;
 - create commits;
 - create PRs;
@@ -153,20 +205,17 @@ Inputs:
 ```text
 pr_number: <PR number>
 run_tests: true | false
-provider: deterministic | langchain-openai
-model: gpt-4.1-mini
 ```
 
 Recommended first run:
 
 ```text
 run_tests: false
-provider: deterministic
 ```
 
 Use `run_tests: true` when you want the workflow to generate Surefire and JaCoCo evidence before commenting.
 
-Use `provider: langchain-openai` only after `OPENAI_API_KEY` is configured and you explicitly want LLM-based reasoning over the deterministic evidence contract.
+LLM/LangChain reasoning is intentionally not available in this write-scoped comment workflow. Use the read-only `Unit Test Coverage Agent` workflow for optional LangChain analysis.
 
 ## Current limitations
 
