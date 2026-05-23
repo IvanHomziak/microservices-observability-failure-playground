@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .models import CoverageAssessment, GitDiffEvidence, JacocoEvidence, SurefireEvidence
+from .models import ChangedClassCoverage, CoverageAssessment, GitDiffEvidence, JacocoClassCoverage, JacocoEvidence, SurefireEvidence
 
 SCHEMA_VERSION = "1.0"
 SAFETY_BOUNDARY = (
@@ -9,11 +9,11 @@ SAFETY_BOUNDARY = (
 )
 
 
-def _unique(values: list[str]) -> tuple[str, ...]:
+def _unique(values: list[str | None]) -> tuple[str, ...]:
     seen: set[str] = set()
     result: list[str] = []
     for value in values:
-        if value not in seen:
+        if value and value not in seen:
             result.append(value)
             seen.add(value)
     return tuple(result)
@@ -29,26 +29,88 @@ def _java_class_name_from_path(path: str) -> str:
     return relative.replace("/", ".")
 
 
+def _percent(covered: int, missed: int) -> float | None:
+    total = covered + missed
+    if total == 0:
+        return None
+    return round((covered / total) * 100, 2)
+
+
+def _class_status(coverage: JacocoClassCoverage | None) -> str:
+    if coverage is None:
+        return "unknown"
+    if coverage.line_covered == 0 and coverage.method_covered == 0:
+        return "uncovered"
+    if coverage.line_missed > 0 or coverage.method_missed > 0 or coverage.branch_missed > 0:
+        return "partial"
+    return "covered"
+
+
+def _uncovered_methods(coverage: JacocoClassCoverage) -> tuple[str, ...]:
+    methods: list[str] = []
+    for method in coverage.methods:
+        if method.name in {"<init>", "<clinit>"}:
+            continue
+        has_executable_counters = (method.instruction_covered + method.instruction_missed + method.line_covered + method.line_missed) > 0
+        if has_executable_counters and method.instruction_covered == 0 and method.line_covered == 0:
+            methods.append(f"{method.name}{method.descriptor}")
+    return tuple(methods)
+
+
+def _build_coverage_index(jacoco: JacocoEvidence) -> dict[str, JacocoClassCoverage]:
+    index: dict[str, JacocoClassCoverage] = {}
+    for item in jacoco.classes:
+        dotted = item.class_name.replace("/", ".")
+        index[dotted] = item
+        # Map nested classes to their top-level source file class when possible.
+        if "$" in dotted:
+            index.setdefault(dotted.split("$", 1)[0], item)
+    return index
+
+
+def _changed_class_coverage(production_files: list[str], git: GitDiffEvidence, jacoco: JacocoEvidence) -> tuple[ChangedClassCoverage, ...]:
+    coverage_index = _build_coverage_index(jacoco)
+    service_by_path = {item.path: item.service for item in git.changed_files}
+    results: list[ChangedClassCoverage] = []
+
+    for file_path in production_files:
+        expected_class_name = _java_class_name_from_path(file_path)
+        coverage = coverage_index.get(expected_class_name)
+        status = _class_status(coverage)
+        uncovered_methods = _uncovered_methods(coverage) if coverage else ()
+
+        results.append(
+            ChangedClassCoverage(
+                source_file=file_path,
+                service=service_by_path.get(file_path),
+                expected_class_name=expected_class_name,
+                matched_class_name=coverage.class_name.replace("/", ".") if coverage else None,
+                report_file=coverage.file if coverage else None,
+                status=status,
+                line_coverage_percent=_percent(coverage.line_covered, coverage.line_missed) if coverage else None,
+                branch_coverage_percent=_percent(coverage.branch_covered, coverage.branch_missed) if coverage else None,
+                method_coverage_percent=_percent(coverage.method_covered, coverage.method_missed) if coverage else None,
+                lines_covered=coverage.line_covered if coverage else 0,
+                lines_missed=coverage.line_missed if coverage else 0,
+                methods_covered=coverage.method_covered if coverage else 0,
+                methods_missed=coverage.method_missed if coverage else 0,
+                uncovered_methods=uncovered_methods,
+            )
+        )
+
+    return tuple(results)
+
+
 def assess_coverage(git: GitDiffEvidence, surefire: SurefireEvidence, jacoco: JacocoEvidence) -> CoverageAssessment:
     production_files = [item.path for item in git.changed_files if item.category == "production-java"]
     test_files = [item.path for item in git.changed_files if item.category == "test-java"]
-    changed_services = _unique([item.service for item in git.changed_files if item.service])
+    changed_services = _unique([item.service for item in git.changed_files])
+    changed_class_coverage = _changed_class_coverage(production_files, git, jacoco)
 
-    jacoco_class_names = {item.class_name.replace("/", "."): item for item in jacoco.classes}
-    covered_classes: list[str] = []
-    uncovered_classes: list[str] = []
-    unknown_files: list[str] = []
-
-    for file_path in production_files:
-        class_name = _java_class_name_from_path(file_path)
-        coverage = jacoco_class_names.get(class_name)
-        if coverage is None:
-            unknown_files.append(file_path)
-            continue
-        if coverage.line_covered > 0 or coverage.method_covered > 0:
-            covered_classes.append(class_name)
-        else:
-            uncovered_classes.append(class_name)
+    covered_classes = [item.expected_class_name for item in changed_class_coverage if item.status == "covered"]
+    partially_covered_classes = [item.expected_class_name for item in changed_class_coverage if item.status == "partial"]
+    uncovered_classes = [item.expected_class_name for item in changed_class_coverage if item.status == "uncovered"]
+    unknown_files = [item.source_file for item in changed_class_coverage if item.status == "unknown"]
 
     missing_test_scenarios: list[str] = []
     recommended_tests: list[str] = []
@@ -66,16 +128,28 @@ def assess_coverage(git: GitDiffEvidence, surefire: SurefireEvidence, jacoco: Ja
         missing_test_scenarios.append("No Surefire XML reports were found, so test execution evidence is missing.")
         recommended_tests.append("Run Maven tests and publish target/surefire-reports artifacts.")
 
-    if uncovered_classes:
-        blocking_reasons.append("At least one changed class appears uncovered according to JaCoCo evidence.")
+    for class_coverage in changed_class_coverage:
+        if class_coverage.status == "unknown":
+            recommended_tests.append(f"Generate JaCoCo evidence for changed class `{class_coverage.expected_class_name}`.")
+        elif class_coverage.status == "uncovered":
+            blocking_reasons.append(f"Changed class `{class_coverage.expected_class_name}` appears uncovered.")
+            recommended_tests.append(f"Add tests that execute `{class_coverage.expected_class_name}`.")
+        elif class_coverage.status == "partial":
+            recommended_tests.append(f"Review missing line/branch/method coverage for `{class_coverage.expected_class_name}`.")
+            for method in class_coverage.uncovered_methods:
+                recommended_tests.append(f"Add a test covering `{class_coverage.expected_class_name}.{method}`.")
 
-    if production_files and not jacoco.reports_found:
+    if uncovered_classes:
+        coverage_status = "insufficient"
+        merge_recommendation = "block"
+        confidence = "medium"
+    elif production_files and (unknown_files or jacoco.reports_found == 0):
         coverage_status = "unknown"
         merge_recommendation = "manual_review"
         confidence = "low"
-    elif uncovered_classes:
-        coverage_status = "insufficient"
-        merge_recommendation = "block"
+    elif production_files and partially_covered_classes:
+        coverage_status = "partial"
+        merge_recommendation = "manual_review"
         confidence = "medium"
     elif production_files and covered_classes:
         coverage_status = "sufficient"
@@ -98,13 +172,15 @@ def assess_coverage(git: GitDiffEvidence, surefire: SurefireEvidence, jacoco: Ja
         changed_services=changed_services,
         surefire_reports_found=surefire.reports_found,
         jacoco_reports_found=jacoco.reports_found,
+        changed_class_coverage=changed_class_coverage,
         covered_classes=tuple(covered_classes),
+        partially_covered_classes=tuple(partially_covered_classes),
         uncovered_classes=tuple(uncovered_classes),
         unknown_coverage_files=tuple(unknown_files),
-        missing_test_scenarios=tuple(missing_test_scenarios or ("No deterministic missing-test scenario was detected.",)),
-        recommended_tests=tuple(recommended_tests or ("No deterministic test recommendation was generated.",)),
+        missing_test_scenarios=tuple(_unique(missing_test_scenarios) or ("No deterministic missing-test scenario was detected.",)),
+        recommended_tests=tuple(_unique(recommended_tests) or ("No deterministic test recommendation was generated.",)),
         confidence=confidence,
-        blocking_reasons=tuple(blocking_reasons or ("No deterministic blocking reason was detected.",)),
+        blocking_reasons=tuple(_unique(blocking_reasons) or ("No deterministic blocking reason was detected.",)),
         merge_recommendation=merge_recommendation,
         safety_boundary=SAFETY_BOUNDARY,
     )
