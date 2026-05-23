@@ -2,21 +2,19 @@
 
 ## Purpose
 
-This document describes the read-only CI Failure Reasoning Agent scaffold.
+This document describes the read-only CI Failure Reasoning Agent.
 
 The agent converts a bounded CI evidence pack into structured diagnostic outputs.
 
 It is intentionally conservative:
 
-- no active LLM calls;
-- no secrets;
+- optional LLM call only when explicitly selected;
+- no secrets in default deterministic mode;
 - no code mutation;
 - no PR creation;
 - no deployment;
 - no image publishing;
 - no write permissions.
-
-The goal is to establish a safe agent contract before adding any model integration.
 
 ## Current architecture
 
@@ -39,6 +37,9 @@ Bounded reasoning prompt
 Reasoning provider abstraction
         |
         v
+Validated JSON contract
+        |
+        v
 agent-diagnostic-report.md
 agent-diagnostic-report.json
 ```
@@ -47,13 +48,12 @@ agent-diagnostic-report.json
 
 | File | Purpose |
 |---|---|
-| `agents/ci_failure_reasoning_agent/` | Python package scaffold |
+| `agents/ci_failure_reasoning_agent/` | Python package |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/evidence_loader.py` | Loads bounded evidence pack |
-| `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/output_schema.py` | Validates structured JSON output contract |
+| `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/output_schema.py` | Validates structured JSON output contract and renders markdown from validated JSON |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/prompt_builder.py` | Builds audit-friendly bounded prompt artifact |
-| `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/providers.py` | Provider abstraction and deterministic provider |
+| `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/providers.py` | Provider abstraction, deterministic provider, optional OpenAI provider |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/reasoner.py` | Deterministic reasoning layer |
-| `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/renderer.py` | Markdown report renderer |
 | `agents/ci_failure_reasoning_agent/src/ci_failure_reasoning_agent/main.py` | CLI entrypoint |
 | `.github/workflows/ci-failure-reasoning-agent.yml` | Manual workflow wrapper |
 
@@ -76,25 +76,47 @@ This reduces hallucination risk, cost, prompt-injection surface, and reasoning a
 
 ## Provider model
 
-The package has a provider abstraction so future LLM support can be added without changing the core evidence contract.
+Supported providers:
 
-Currently enabled provider:
+```text
+deterministic
+openai
+```
+
+Default provider:
 
 ```text
 deterministic
 ```
 
-The deterministic provider performs no external call and returns the local deterministic reasoning report.
+`deterministic` performs no external call and returns the local deterministic reasoning report.
 
-Disabled external provider aliases:
+`openai` is optional and uses the bounded prompt artifact as input. It requires:
 
 ```text
-openai
+OPENAI_API_KEY
+```
+
+Optional model override:
+
+```text
+OPENAI_MODEL
+```
+
+Default model:
+
+```text
+gpt-4.1-mini
+```
+
+Disabled aliases:
+
+```text
 llm
 external
 ```
 
-Those aliases intentionally fail closed. A real external provider must be added in a separate PR with explicit security review, protected environment configuration, structured output validation, and no PR write permissions.
+Those aliases intentionally fail closed. Use `openai` explicitly after environment review.
 
 ## Structured JSON output contract
 
@@ -119,19 +141,19 @@ The contract validates:
 - non-blank string fields;
 - explicit safety boundary.
 
-The validation is implemented without adding third-party schema dependencies.
+The OpenAI provider output is not trusted unless it validates against this contract.
 
-This JSON contract is the boundary future LLM providers must satisfy. A model output should not be trusted unless it validates against this contract.
+Markdown is rendered from validated JSON, not from raw model text.
 
 ## Prompt artifact
 
-The CLI can generate:
+The CLI generates:
 
 ```text
 reasoning-prompt.md
 ```
 
-This is an audit artifact for the future LLM prompt contract. It is not sent to any model in the current implementation.
+This is an audit artifact for the prompt sent to the optional provider.
 
 The prompt includes:
 
@@ -142,7 +164,8 @@ The prompt includes:
 - agent fix plan;
 - workflow log excerpt;
 - missing evidence detected by the loader;
-- explicit anti-hallucination constraints.
+- explicit anti-hallucination constraints;
+- required JSON output contract instructions.
 
 ## Output
 
@@ -154,26 +177,7 @@ agent-diagnostic-report.json
 reasoning-prompt.md
 ```
 
-The diagnostic report includes:
-
-- executive summary;
-- evidence inspected;
-- failed workflow;
-- failed jobs and steps;
-- symptoms;
-- root-cause hypotheses;
-- confidence;
-- missing evidence;
-- recommended fix;
-- files likely affected;
-- files not to change casually;
-- validation plan;
-- risk assessment;
-- safety boundary.
-
-## Local usage
-
-After producing a triage evidence directory, run:
+## Local deterministic usage
 
 ```bash
 PYTHONPATH=agents/ci_failure_reasoning_agent/src \
@@ -181,6 +185,22 @@ python -m ci_failure_reasoning_agent.main \
   --evidence-dir triage \
   --repository-root . \
   --provider deterministic \
+  --output reasoning/output/agent-diagnostic-report.md \
+  --json-output reasoning/output/agent-diagnostic-report.json \
+  --prompt-output reasoning/output/reasoning-prompt.md
+```
+
+## Local OpenAI usage
+
+```bash
+export OPENAI_API_KEY="<redacted>"
+export OPENAI_MODEL="gpt-4.1-mini"
+
+PYTHONPATH=agents/ci_failure_reasoning_agent/src \
+python -m ci_failure_reasoning_agent.main \
+  --evidence-dir triage \
+  --repository-root . \
+  --provider openai \
   --output reasoning/output/agent-diagnostic-report.md \
   --json-output reasoning/output/agent-diagnostic-report.json \
   --prompt-output reasoning/output/reasoning-prompt.md
@@ -197,13 +217,21 @@ Actions -> CI Failure Reasoning Agent -> Run workflow
 ```
 
 4. Paste the run ID.
-5. Download artifact:
+5. Select provider:
 
 ```text
-ci-failure-reasoning-agent-<run_id>
+deterministic
+openai
 ```
 
-6. Review:
+6. For `openai`, configure `OPENAI_API_KEY` as a repository or environment secret before running.
+7. Download artifact:
+
+```text
+ci-failure-reasoning-agent-<run_id>-<provider>
+```
+
+8. Review:
 
 ```text
 agent-diagnostic-report.md
@@ -253,13 +281,9 @@ The agent must not:
 
 ## Current limitations
 
-This scaffold is not yet an LLM-powered agent.
-
 Known limitations:
 
-- deterministic provider only;
-- external provider aliases fail closed;
-- no active LLM API call;
+- optional OpenAI provider is advisory only;
 - no code patch generation;
 - no source-code search beyond bounded evidence;
 - no Surefire XML parsing inside the reasoning package;
@@ -281,4 +305,4 @@ v5: patch proposal artifact, no commit
 v6: human-approved PR creation with strict permissions
 ```
 
-The next safe step after structured output validation is an optional LLM provider over bounded evidence. It must remain manual-only, read-only, environment-protected, and validated against the same JSON contract before any output is trusted.
+The next safe step after this optional provider is a patch proposal artifact, not automatic code mutation.
