@@ -18,13 +18,26 @@ on:
         required: true
         default: false
         type: boolean
+      provider:
+        description: "Coverage reasoning provider"
+        required: true
+        default: "deterministic"
+        type: choice
+        options:
+          - deterministic
+          - langchain-openai
+      model:
+        description: "Optional model name for provider=langchain-openai"
+        required: false
+        default: "gpt-4.1-mini"
+        type: string
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: unit-test-coverage-agent-${{ github.workflow }}-${{ github.ref }}
+  group: unit-test-coverage-agent-${{ github.workflow }}-${{ github.ref }}-${{ inputs.provider }}
   cancel-in-progress: true
 
 jobs:
@@ -51,6 +64,14 @@ jobs:
           cd agents/unit_test_coverage_agent
           python -m compileall src tests
           python -m unittest discover -s tests
+
+      - name: Install LangChain dependencies when requested
+        if: ${{ inputs.provider == 'langchain-openai' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install ./agents/unit_test_coverage_agent
 
       - name: Optionally run Maven tests and JaCoCo reports
         if: ${{ inputs.run_tests }}
@@ -85,6 +106,9 @@ jobs:
 
       - name: Generate coverage report
         shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
           mkdir -p coverage-agent/output coverage-agent/raw
@@ -94,8 +118,10 @@ jobs:
               --repository-root . \
               --base-ref "${{ inputs.base_ref }}" \
               --head-ref "${{ inputs.head_ref }}" \
+              --provider "${{ inputs.provider }}" \
               --output coverage-agent/output/unit-test-coverage-report.md \
-              --json-output coverage-agent/output/unit-test-coverage-report.json
+              --json-output coverage-agent/output/unit-test-coverage-report.json \
+              --prompt-output coverage-agent/output/coverage-reasoning-prompt.md
 
           git diff --name-only "${{ inputs.base_ref }}...${{ inputs.head_ref }}" > coverage-agent/raw/changed-files.txt
           find . -path "*/target/surefire-reports/TEST-*.xml" -type f -print > coverage-agent/raw/surefire-files.txt || true
@@ -109,10 +135,11 @@ jobs:
       - name: Upload coverage agent artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: unit-test-coverage-agent-${{ github.run_id }}
+          name: unit-test-coverage-agent-${{ github.run_id }}-${{ inputs.provider }}
           path: |
             coverage-agent/output/unit-test-coverage-report.md
             coverage-agent/output/unit-test-coverage-report.json
+            coverage-agent/output/coverage-reasoning-prompt.md
             coverage-agent/raw/*.txt
             */target/surefire-reports/TEST-*.xml
             */target/site/jacoco/jacoco.xml
