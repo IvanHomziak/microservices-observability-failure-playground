@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE_ROOT / "src"))
@@ -13,6 +15,8 @@ from unit_test_coverage_agent.git_diff import classify_file
 from unit_test_coverage_agent.jacoco_loader import load_jacoco_evidence
 from unit_test_coverage_agent.models import GitDiffEvidence
 from unit_test_coverage_agent.output_schema import assessment_to_contract, validate_contract
+from unit_test_coverage_agent.prompt_builder import build_coverage_reasoning_prompt
+from unit_test_coverage_agent.providers import get_provider
 from unit_test_coverage_agent.renderer import render_markdown
 from unit_test_coverage_agent.surefire_loader import load_surefire_evidence
 
@@ -43,6 +47,28 @@ JACOCO_WITH_METHODS = """<?xml version="1.0" encoding="UTF-8"?>
   </package>
 </report>
 """
+
+
+def build_partial_contract() -> dict:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        write(root / "orders-service" / "target" / "site" / "jacoco" / "jacoco.xml", JACOCO_WITH_METHODS)
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=(
+                "orders-service/src/main/java/com/example/OrderService.java",
+                "orders-service/src/test/java/com/example/OrderServiceTest.java",
+            ),
+            changed_files=(
+                classify_file("orders-service/src/main/java/com/example/OrderService.java"),
+                classify_file("orders-service/src/test/java/com/example/OrderServiceTest.java"),
+            ),
+        )
+        from unit_test_coverage_agent.models import SurefireEvidence
+
+        assessment = assess_coverage(git, SurefireEvidence(1, ()), load_jacoco_evidence(root))
+        return assessment_to_contract(assessment)
 
 
 class TestUnitTestCoverageAgent(unittest.TestCase):
@@ -100,35 +126,17 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
         self.assertEqual("unknown", contract["changed_class_coverage"][0]["status"])
 
     def test_assessment_partial_with_uncovered_method(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            write(root / "orders-service" / "target" / "site" / "jacoco" / "jacoco.xml", JACOCO_WITH_METHODS)
-            git = GitDiffEvidence(
-                base_ref="origin/main",
-                head_ref="HEAD",
-                raw_changed_files=(
-                    "orders-service/src/main/java/com/example/OrderService.java",
-                    "orders-service/src/test/java/com/example/OrderServiceTest.java",
-                ),
-                changed_files=(
-                    classify_file("orders-service/src/main/java/com/example/OrderService.java"),
-                    classify_file("orders-service/src/test/java/com/example/OrderServiceTest.java"),
-                ),
-            )
-            from unit_test_coverage_agent.models import SurefireEvidence
+        contract = build_partial_contract()
+        markdown = render_markdown(contract)
 
-            assessment = assess_coverage(git, SurefireEvidence(1, ()), load_jacoco_evidence(root))
-            contract = assessment_to_contract(assessment)
-            markdown = render_markdown(contract)
-
-            self.assertEqual("partial", contract["coverage_status"])
-            self.assertEqual("manual_review", contract["merge_recommendation"])
-            self.assertIn("com.example.OrderService", contract["partially_covered_classes"])
-            self.assertEqual("partial", contract["changed_class_coverage"][0]["status"])
-            self.assertEqual(66.67, contract["changed_class_coverage"][0]["line_coverage_percent"])
-            self.assertIn("cancelOrder()V", contract["changed_class_coverage"][0]["uncovered_methods"])
-            self.assertIn("Changed class coverage", markdown)
-            self.assertIn("cancelOrder()V", markdown)
+        self.assertEqual("partial", contract["coverage_status"])
+        self.assertEqual("manual_review", contract["merge_recommendation"])
+        self.assertIn("com.example.OrderService", contract["partially_covered_classes"])
+        self.assertEqual("partial", contract["changed_class_coverage"][0]["status"])
+        self.assertEqual(66.67, contract["changed_class_coverage"][0]["line_coverage_percent"])
+        self.assertIn("cancelOrder()V", contract["changed_class_coverage"][0]["uncovered_methods"])
+        self.assertIn("Changed class coverage", markdown)
+        self.assertIn("cancelOrder()V", markdown)
 
     def test_assessment_sufficient_with_full_jacoco_coverage(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -158,6 +166,33 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
             self.assertEqual("approve", contract["merge_recommendation"])
             self.assertIn("com.example.OrderService", contract["covered_classes"])
             self.assertFalse(validate_contract(contract))
+
+    def test_prompt_builder_contains_safety_constraints(self) -> None:
+        contract = build_partial_contract()
+        prompt = build_coverage_reasoning_prompt(contract)
+
+        self.assertIn("Reason only from the deterministic coverage evidence", prompt)
+        self.assertIn("Do not invent files, classes, methods, tests, coverage percentages, or validation results", prompt)
+        self.assertIn("Return only JSON", prompt)
+        self.assertIn("cancelOrder", prompt)
+
+    def test_deterministic_provider_returns_valid_contract_without_external_call(self) -> None:
+        contract = build_partial_contract()
+        provider = get_provider("deterministic")
+
+        result = provider.refine(contract)
+
+        self.assertEqual("deterministic", result.provider_name)
+        self.assertFalse(result.used_external_call)
+        self.assertFalse(validate_contract(result.contract))
+
+    def test_langchain_provider_requires_api_key(self) -> None:
+        contract = build_partial_contract()
+        provider = get_provider("langchain-openai")
+
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(RuntimeError):
+                provider.refine(contract)
 
 
 if __name__ == "__main__":
