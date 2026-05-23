@@ -13,6 +13,7 @@ Current version:
 - maps changed Java code to JaCoCo class/method coverage;
 - generates validated JSON and markdown reports;
 - optionally refines the deterministic report using LangChain + OpenAI;
+- generates advisory patch proposal artifacts for missing/partial test coverage;
 - does not mutate code;
 - does not create PRs;
 - does not enforce coverage thresholds.
@@ -71,7 +72,9 @@ python -m unit_test_coverage_agent.main \
   --provider deterministic \
   --output coverage-agent/output/unit-test-coverage-report.md \
   --json-output coverage-agent/output/unit-test-coverage-report.json \
-  --prompt-output coverage-agent/output/coverage-reasoning-prompt.md
+  --prompt-output coverage-agent/output/coverage-reasoning-prompt.md \
+  --patch-proposal-output coverage-agent/output/unit-test-coverage-patch-proposal.md \
+  --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json
 ```
 
 LangChain example:
@@ -88,7 +91,9 @@ python -m unit_test_coverage_agent.main \
   --provider langchain-openai \
   --output coverage-agent/output/unit-test-coverage-report.md \
   --json-output coverage-agent/output/unit-test-coverage-report.json \
-  --prompt-output coverage-agent/output/coverage-reasoning-prompt.md
+  --prompt-output coverage-agent/output/coverage-reasoning-prompt.md \
+  --patch-proposal-output coverage-agent/output/unit-test-coverage-patch-proposal.md \
+  --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json
 ```
 
 ## Evidence sources
@@ -107,7 +112,22 @@ git diff --name-only <base_ref>...<head_ref>
 unit-test-coverage-report.md
 unit-test-coverage-report.json
 coverage-reasoning-prompt.md
+unit-test-coverage-patch-proposal.md
+unit-test-coverage-patch-proposal.json
 ```
+
+## Patch proposal artifact
+
+The patch proposal artifact recommends:
+
+- production class that needs tests;
+- suggested test file path;
+- suggested test class name;
+- suggested test method names;
+- rationale;
+- validation commands.
+
+It is advisory only. It does not apply patches, generate commits, or create PRs.
 
 ## Coverage status values
 
