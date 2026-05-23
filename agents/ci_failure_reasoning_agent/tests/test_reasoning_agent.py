@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from ci_failure_reasoning_agent.evidence_loader import load_evidence_pack
 from ci_failure_reasoning_agent.output_schema import contract_from_report, validate_contract
@@ -177,8 +179,9 @@ class TestReasoningAgent(unittest.TestCase):
             self.assertEqual("deterministic", result.provider_name)
             self.assertFalse(result.used_external_call)
             self.assertIn("# Agent Diagnostic Report", result.content)
+            self.assertIsNotNone(result.json_content)
 
-    def test_external_provider_fails_closed(self) -> None:
+    def test_openai_provider_requires_api_key(self) -> None:
         import tempfile
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -188,8 +191,13 @@ class TestReasoningAgent(unittest.TestCase):
             prompt = build_reasoning_prompt(pack)
             provider = get_provider("openai")
 
-            with self.assertRaises(RuntimeError):
-                provider.generate(prompt=prompt, deterministic_report=report)
+            with patch.dict(os.environ, {}, clear=True):
+                with self.assertRaises(RuntimeError):
+                    provider.generate(prompt=prompt, deterministic_report=report)
+
+    def test_external_alias_fails_closed(self) -> None:
+        with self.assertRaises(RuntimeError):
+            get_provider("external")
 
     def test_structured_output_contract_is_valid(self) -> None:
         import tempfile
