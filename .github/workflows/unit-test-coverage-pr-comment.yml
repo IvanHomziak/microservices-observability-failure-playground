@@ -201,11 +201,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          comment_id=$(gh api \
+          comments_file=$(mktemp)
+          gh api \
             --paginate \
             "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
             --jq ".[] | select(.user.login == \"github-actions[bot]\") | select(.body | contains(env.COMMENT_MARKER)) | .id" \
-            | head -n 1 || true)
+            > "$comments_file"
+
+          comment_id=$(head -n 1 "$comments_file")
 
           if [ -n "$comment_id" ]; then
             echo "Updating existing coverage agent comment: $comment_id"
