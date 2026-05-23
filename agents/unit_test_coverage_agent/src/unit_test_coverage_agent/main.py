@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from .assessment import assess_coverage
 from .git_diff import load_changed_files
 from .jacoco_loader import load_jacoco_evidence
 from .output_schema import assessment_to_contract, render_contract_json
+from .patch_proposal import build_patch_proposal, patch_proposal_to_dict, render_patch_proposal_markdown
 from .providers import get_provider
 from .renderer import render_markdown
 from .surefire_loader import load_surefire_evidence
@@ -21,6 +23,8 @@ def main() -> int:
     parser.add_argument("--output", required=True, type=Path, help="Markdown report output path")
     parser.add_argument("--json-output", required=True, type=Path, help="Validated JSON report output path")
     parser.add_argument("--prompt-output", type=Path, default=None, help="Optional bounded prompt artifact output path")
+    parser.add_argument("--patch-proposal-output", type=Path, default=None, help="Optional markdown patch proposal artifact output path")
+    parser.add_argument("--patch-proposal-json-output", type=Path, default=None, help="Optional JSON patch proposal artifact output path")
     args = parser.parse_args()
 
     git = load_changed_files(args.repository_root, args.base_ref, args.head_ref)
@@ -46,6 +50,19 @@ def main() -> int:
     args.output.write_text(render_markdown(contract) + "\n", encoding="utf-8")
     args.json_output.write_text(render_contract_json(contract) + "\n", encoding="utf-8")
 
+    patch_proposal = build_patch_proposal(contract)
+    patch_proposal_dict = patch_proposal_to_dict(patch_proposal)
+
+    if args.patch_proposal_output is not None:
+        args.patch_proposal_output.parent.mkdir(parents=True, exist_ok=True)
+        args.patch_proposal_output.write_text(render_patch_proposal_markdown(patch_proposal) + "\n", encoding="utf-8")
+        print(f"Wrote patch proposal markdown artifact to {args.patch_proposal_output}")
+
+    if args.patch_proposal_json_output is not None:
+        args.patch_proposal_json_output.parent.mkdir(parents=True, exist_ok=True)
+        args.patch_proposal_json_output.write_text(json.dumps(patch_proposal_dict, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"Wrote patch proposal JSON artifact to {args.patch_proposal_json_output}")
+
     print(f"Wrote coverage markdown report to {args.output}")
     print(f"Wrote coverage JSON report to {args.json_output}")
     print(f"Provider: {provider_result.provider_name}")
@@ -53,6 +70,7 @@ def main() -> int:
     print(f"Model: {provider_result.model or 'none'}")
     print(f"Coverage status: {contract['coverage_status']}")
     print(f"Merge recommendation: {contract['merge_recommendation']}")
+    print(f"Patch proposal status: {patch_proposal.proposal_status}")
     return 0
 
 
