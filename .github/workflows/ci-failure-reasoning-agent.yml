@@ -7,13 +7,26 @@ on:
         description: "GitHub Actions workflow run ID to reason about"
         required: true
         type: string
+      provider:
+        description: "Reasoning provider to use"
+        required: true
+        default: "deterministic"
+        type: choice
+        options:
+          - deterministic
+          - openai
+      model:
+        description: "Optional model name for provider=openai"
+        required: false
+        default: "gpt-4.1-mini"
+        type: string
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
-  group: ci-failure-reasoning-agent-${{ github.workflow }}-${{ github.ref }}-${{ inputs.run_id }}
+  group: ci-failure-reasoning-agent-${{ github.workflow }}-${{ github.ref }}-${{ inputs.run_id }}-${{ inputs.provider }}
   cancel-in-progress: true
 
 jobs:
@@ -93,13 +106,16 @@ jobs:
 
       - name: Generate read-only agent diagnostic report
         shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
           PYTHONPATH="agents/ci_failure_reasoning_agent/src" \
             python -m ci_failure_reasoning_agent.main \
               --evidence-dir triage \
               --repository-root . \
-              --provider deterministic \
+              --provider "${{ inputs.provider }}" \
               --output reasoning/output/agent-diagnostic-report.md \
               --json-output reasoning/output/agent-diagnostic-report.json \
               --prompt-output reasoning/output/reasoning-prompt.md
@@ -109,7 +125,7 @@ jobs:
       - name: Upload reasoning artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ci-failure-reasoning-agent-${{ inputs.run_id }}
+          name: ci-failure-reasoning-agent-${{ inputs.run_id }}-${{ inputs.provider }}
           path: |
             reasoning/output/agent-diagnostic-report.md
             reasoning/output/agent-diagnostic-report.json
