@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -36,6 +36,19 @@ class SurefireEvidence:
 
 
 @dataclass(frozen=True)
+class JacocoMethodCoverage:
+    name: str
+    descriptor: str
+    line: int | None
+    instruction_covered: int
+    instruction_missed: int
+    line_covered: int
+    line_missed: int
+    branch_covered: int
+    branch_missed: int
+
+
+@dataclass(frozen=True)
 class JacocoClassCoverage:
     file: str
     package: str
@@ -49,12 +62,31 @@ class JacocoClassCoverage:
     branch_missed: int
     method_covered: int
     method_missed: int
+    methods: tuple[JacocoMethodCoverage, ...]
 
 
 @dataclass(frozen=True)
 class JacocoEvidence:
     reports_found: int
     classes: tuple[JacocoClassCoverage, ...]
+
+
+@dataclass(frozen=True)
+class ChangedClassCoverage:
+    source_file: str
+    service: str | None
+    expected_class_name: str
+    matched_class_name: str | None
+    report_file: str | None
+    status: str
+    line_coverage_percent: float | None
+    branch_coverage_percent: float | None
+    method_coverage_percent: float | None
+    lines_covered: int
+    lines_missed: int
+    methods_covered: int
+    methods_missed: int
+    uncovered_methods: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -66,7 +98,9 @@ class CoverageAssessment:
     changed_services: tuple[str, ...]
     surefire_reports_found: int
     jacoco_reports_found: int
+    changed_class_coverage: tuple[ChangedClassCoverage, ...]
     covered_classes: tuple[str, ...]
+    partially_covered_classes: tuple[str, ...]
     uncovered_classes: tuple[str, ...]
     unknown_coverage_files: tuple[str, ...]
     missing_test_scenarios: tuple[str, ...]
