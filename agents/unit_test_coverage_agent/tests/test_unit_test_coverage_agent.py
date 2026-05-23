@@ -16,6 +16,7 @@ from unit_test_coverage_agent.jacoco_loader import load_jacoco_evidence
 from unit_test_coverage_agent.models import GitDiffEvidence
 from unit_test_coverage_agent.output_schema import assessment_to_contract, validate_contract
 from unit_test_coverage_agent.patch_proposal import build_patch_proposal, patch_proposal_to_dict, render_patch_proposal_markdown
+from unit_test_coverage_agent.pr_comment import COMMENT_MARKER, render_pr_comment
 from unit_test_coverage_agent.prompt_builder import build_coverage_reasoning_prompt
 from unit_test_coverage_agent.providers import get_provider
 from unit_test_coverage_agent.renderer import render_markdown
@@ -212,6 +213,17 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
         self.assertIn("does not authorize code mutation", payload["safety_boundary"])
         self.assertIn("Unit Test Coverage Patch Proposal", markdown)
         self.assertIn("shouldCoverCancelOrder", markdown)
+
+    def test_pr_comment_is_rendered_from_validated_artifacts(self) -> None:
+        contract = build_partial_contract()
+        proposal = patch_proposal_to_dict(build_patch_proposal(contract))
+        comment = render_pr_comment(contract, proposal)
+
+        self.assertIn(COMMENT_MARKER, comment)
+        self.assertIn("Unit Test Coverage Agent", comment)
+        self.assertIn("Coverage status: `partial`", comment)
+        self.assertIn("shouldCoverCancelOrder", comment)
+        self.assertIn("does not authorize code mutation", comment)
 
 
 if __name__ == "__main__":
