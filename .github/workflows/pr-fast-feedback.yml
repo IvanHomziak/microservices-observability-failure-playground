@@ -246,20 +246,41 @@ jobs:
 
           echo "No pull_request_target trigger usage detected"
 
-      - name: Validate workflow does not reference secrets
+      - name: Validate secrets are not used by PR or push workflows
         shell: bash
         run: |
           set -euo pipefail
 
-          # This fast-feedback workflow must not use repository/org/environment secrets.
-          # It is intentionally read-only and safe for PR validation.
-          if grep -RInE 'secrets\.[A-Za-z0-9_]+' .github/workflows --exclude='pr-fast-feedback.yml'; then
-            echo "Secrets usage detected in another workflow"
-            echo "For the initial POC, secrets must not be used by PR validation workflows"
-            exit 1
+          # Secrets are forbidden in workflows that can run from pull_request or push.
+          # Manual-only workflow_dispatch workflows may use secrets for explicitly
+          # requested operations, provided they remain read-only and do not mutate repo state.
+          secret_files=$(grep -RIlE 'secrets\.[A-Za-z0-9_]+' .github/workflows --exclude='pr-fast-feedback.yml' || true)
+
+          if [ -z "$secret_files" ]; then
+            echo "No secrets usage detected in checked workflows"
+            exit 0
           fi
 
-          echo "No secrets usage detected in checked workflows"
+          pr_or_push_trigger_regex='^[[:space:]]*(pull_request|push|pull_request_target)[[:space:]]*:|^[[:space:]]*-[[:space:]]*(pull_request|push|pull_request_target)[[:space:]]*$|^[[:space:]]*on:[[:space:]]*\[.*(pull_request|push|pull_request_target).*[\]]'
+          manual_trigger_regex='^[[:space:]]*workflow_dispatch[[:space:]]*:'
+
+          while IFS= read -r workflow_file; do
+            [ -z "$workflow_file" ] && continue
+            echo "Workflow references secrets: $workflow_file"
+
+            if grep -nE "$pr_or_push_trigger_regex" "$workflow_file"; then
+              echo "Secrets usage detected in a PR/push-capable workflow: $workflow_file"
+              echo "Secrets are not allowed in pull_request, push, or pull_request_target workflows"
+              exit 1
+            fi
+
+            if ! grep -nE "$manual_trigger_regex" "$workflow_file"; then
+              echo "Secrets usage is allowed only in explicit workflow_dispatch workflows: $workflow_file"
+              exit 1
+            fi
+          done <<< "$secret_files"
+
+          echo "Secrets usage is limited to manual-only workflows"
 
       - name: Validate no direct deployment commands in scripts
         shell: bash
