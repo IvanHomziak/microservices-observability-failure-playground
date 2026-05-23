@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from xml.etree import ElementTree
 
-from .models import JacocoClassCoverage, JacocoEvidence
+from .models import JacocoClassCoverage, JacocoEvidence, JacocoMethodCoverage
 
 
 def _counter(element: ElementTree.Element, counter_type: str) -> tuple[int, int]:
@@ -13,6 +13,32 @@ def _counter(element: ElementTree.Element, counter_type: str) -> tuple[int, int]
             missed = int(counter.attrib.get("missed", "0"))
             return covered, missed
     return 0, 0
+
+
+def _optional_int(raw: str | None) -> int | None:
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _method_coverage(method_element: ElementTree.Element) -> JacocoMethodCoverage:
+    instruction_covered, instruction_missed = _counter(method_element, "INSTRUCTION")
+    line_covered, line_missed = _counter(method_element, "LINE")
+    branch_covered, branch_missed = _counter(method_element, "BRANCH")
+    return JacocoMethodCoverage(
+        name=method_element.attrib.get("name", ""),
+        descriptor=method_element.attrib.get("desc", ""),
+        line=_optional_int(method_element.attrib.get("line")),
+        instruction_covered=instruction_covered,
+        instruction_missed=instruction_missed,
+        line_covered=line_covered,
+        line_missed=line_missed,
+        branch_covered=branch_covered,
+        branch_missed=branch_missed,
+    )
 
 
 def load_jacoco_evidence(repository_root: Path) -> JacocoEvidence:
@@ -34,6 +60,7 @@ def load_jacoco_evidence(repository_root: Path) -> JacocoEvidence:
                 line_covered, line_missed = _counter(class_element, "LINE")
                 branch_covered, branch_missed = _counter(class_element, "BRANCH")
                 method_covered, method_missed = _counter(class_element, "METHOD")
+                methods = tuple(_method_coverage(method) for method in class_element.findall("method"))
 
                 classes.append(
                     JacocoClassCoverage(
@@ -49,6 +76,7 @@ def load_jacoco_evidence(repository_root: Path) -> JacocoEvidence:
                         branch_missed=branch_missed,
                         method_covered=method_covered,
                         method_missed=method_missed,
+                        methods=methods,
                     )
                 )
 
