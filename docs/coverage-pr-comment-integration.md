@@ -2,13 +2,13 @@
 
 ## Purpose
 
-This document describes Story 6 for the Unit Test Coverage Agent: manually posting a coverage review comment to a pull request.
+This document describes Story 6 for the Unit Test Coverage Agent: manually posting or updating a coverage review comment on a pull request.
 
-The integration is intentionally separated from the read-only coverage workflow because posting a PR comment requires write permission.
+The integration is intentionally separated from the read-only coverage workflow because posting or updating a PR comment requires write permission.
 
 ## Workflow
 
-New workflow:
+Workflow:
 
 ```text
 .github/workflows/unit-test-coverage-pr-comment.yml
@@ -62,8 +62,31 @@ generate coverage artifacts
 render comment from validated JSON artifacts
         |
         v
-post PR comment with gh pr comment
+find existing bot comment by marker
+        |
+        v
+update existing comment or create a new one
 ```
+
+## Comment marker
+
+The rendered comment includes a stable marker:
+
+```text
+<!-- unit-test-coverage-agent-comment -->
+```
+
+The workflow searches PR issue comments for this marker only in comments authored by:
+
+```text
+github-actions[bot]
+```
+
+If a matching comment is found, the workflow updates it.
+
+If no matching comment is found, the workflow creates a new comment.
+
+This avoids duplicate coverage comments across repeated manual runs.
 
 ## Generated artifacts
 
@@ -113,7 +136,9 @@ The workflow must not:
 - deploy;
 - enforce thresholds;
 - delete or weaken tests;
-- post raw unvalidated model output.
+- post raw unvalidated model output;
+- edit comments that are not authored by `github-actions[bot]`;
+- edit comments that do not contain the stable marker.
 
 ## Usage
 
@@ -145,12 +170,6 @@ Use `provider: langchain-openai` only after `OPENAI_API_KEY` is configured and y
 
 ## Current limitations
 
-This implementation appends a new comment each time it runs.
+The workflow updates only the first matching `github-actions[bot]` comment containing the marker.
 
-A later improvement may update an existing comment using the marker:
-
-```text
-<!-- unit-test-coverage-agent-comment -->
-```
-
-That improvement should be implemented carefully to avoid editing unrelated user comments.
+It does not delete older duplicate comments if they already exist from previous versions of the workflow.
