@@ -1,0 +1,50 @@
+name: POC Safety Validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "agents/**"
+      - "docs/**"
+      - "scripts/validate_poc_safety.py"
+      - "coverage-policy.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: poc-safety-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-poc-safety:
+    name: Validate POC safety and agent tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run POC safety validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validate_poc_safety.py
+
+      - name: Validate unit test coverage agent package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd agents/unit_test_coverage_agent
+          python -m compileall src tests
+          python -m unittest discover -s tests
