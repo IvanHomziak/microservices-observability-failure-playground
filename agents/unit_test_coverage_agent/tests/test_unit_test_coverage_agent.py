@@ -198,6 +198,12 @@ fail_on_missing_jacoco_evidence: true
             self.assertTrue(policy.fail_on_missing_surefire_evidence)
             self.assertTrue(policy.fail_on_missing_jacoco_evidence)
 
+    def test_policy_loader_fails_when_explicit_policy_path_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with self.assertRaises(FileNotFoundError):
+                load_policy(root, root / "missing-policy.yml")
+
     def test_prompt_builder_contains_safety_constraints(self) -> None:
         contract = build_partial_contract()
         prompt = build_coverage_reasoning_prompt(contract)
