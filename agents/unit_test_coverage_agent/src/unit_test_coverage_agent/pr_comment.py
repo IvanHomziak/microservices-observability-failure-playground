@@ -69,10 +69,23 @@ def _proposal_rows(patch_proposal: dict[str, Any]) -> list[str]:
     return rows
 
 
+def _append_bullets(lines: list[str], title: str, values: list[str]) -> None:
+    if not values:
+        return
+    lines.append(f"### {title}")
+    lines.append("")
+    for value in values:
+        lines.append(f"- {value}")
+    lines.append("")
+
+
 def render_pr_comment(coverage_contract: dict[str, Any], patch_proposal: dict[str, Any]) -> str:
     errors = validate_contract(coverage_contract)
     if errors:
         raise ValueError("Invalid coverage contract: " + "; ".join(errors))
+
+    policy_violations = _list(coverage_contract.get("policy_violations"))
+    policy_warnings = _list(coverage_contract.get("policy_warnings"))
 
     lines: list[str] = []
     lines.append(COMMENT_MARKER)
@@ -85,8 +98,13 @@ def render_pr_comment(coverage_contract: dict[str, Any], patch_proposal: dict[st
     lines.append(f"- Confidence: `{coverage_contract['confidence']}`")
     lines.append(f"- Surefire reports found: `{coverage_contract['surefire_reports_found']}`")
     lines.append(f"- JaCoCo reports found: `{coverage_contract['jacoco_reports_found']}`")
+    lines.append(f"- Policy violations: `{len(policy_violations)}`")
+    lines.append(f"- Policy warnings: `{len(policy_warnings)}`")
     lines.append(f"- Patch proposal status: `{patch_proposal.get('proposal_status', 'unknown')}`")
     lines.append("")
+
+    _append_bullets(lines, "Policy violations", policy_violations)
+    _append_bullets(lines, "Policy warnings", policy_warnings)
 
     changed_rows = _table_rows_for_changed_classes(coverage_contract)
     if changed_rows:

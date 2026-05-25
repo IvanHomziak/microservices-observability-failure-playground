@@ -9,6 +9,7 @@ from .git_diff import load_changed_files
 from .jacoco_loader import load_jacoco_evidence
 from .output_schema import assessment_to_contract, render_contract_json
 from .patch_proposal import build_patch_proposal, patch_proposal_to_dict, render_patch_proposal_markdown
+from .policy import load_policy
 from .providers import get_provider
 from .renderer import render_markdown
 from .surefire_loader import load_surefire_evidence
@@ -19,6 +20,7 @@ def main() -> int:
     parser.add_argument("--repository-root", required=True, type=Path)
     parser.add_argument("--base-ref", required=True, help="Base git ref, for example origin/main")
     parser.add_argument("--head-ref", required=True, help="Head git ref, for example HEAD")
+    parser.add_argument("--policy", type=Path, default=None, help="Optional coverage policy file. Defaults to <repository-root>/coverage-policy.yml")
     parser.add_argument("--provider", default="deterministic", help="Reasoning provider: deterministic or langchain-openai")
     parser.add_argument("--output", required=True, type=Path, help="Markdown report output path")
     parser.add_argument("--json-output", required=True, type=Path, help="Validated JSON report output path")
@@ -27,10 +29,11 @@ def main() -> int:
     parser.add_argument("--patch-proposal-json-output", type=Path, default=None, help="Optional JSON patch proposal artifact output path")
     args = parser.parse_args()
 
+    policy = load_policy(args.repository_root, args.policy)
     git = load_changed_files(args.repository_root, args.base_ref, args.head_ref)
     surefire = load_surefire_evidence(args.repository_root)
     jacoco = load_jacoco_evidence(args.repository_root)
-    assessment = assess_coverage(git, surefire, jacoco)
+    assessment = assess_coverage(git, surefire, jacoco, policy)
     deterministic_contract = assessment_to_contract(assessment)
 
     if args.prompt_output is not None:
@@ -70,6 +73,8 @@ def main() -> int:
     print(f"Model: {provider_result.model or 'none'}")
     print(f"Coverage status: {contract['coverage_status']}")
     print(f"Merge recommendation: {contract['merge_recommendation']}")
+    print(f"Policy violations: {len(contract.get('policy_violations', []))}")
+    print(f"Policy warnings: {len(contract.get('policy_warnings', []))}")
     print(f"Patch proposal status: {patch_proposal.proposal_status}")
     return 0
 

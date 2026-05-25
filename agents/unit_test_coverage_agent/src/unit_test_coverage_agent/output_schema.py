@@ -5,7 +5,7 @@ from typing import Any
 
 from .models import CoverageAssessment, as_jsonable
 
-ALLOWED_COVERAGE_STATUS = {"sufficient", "insufficient", "partial", "unknown", "not_applicable"}
+ALLOWED_COVERAGE_STATUS = {"sufficient", "insufficient", "partial", "unknown", "not_applicable", "policy_violation"}
 ALLOWED_CLASS_COVERAGE_STATUS = {"covered", "partial", "uncovered", "unknown"}
 ALLOWED_CONFIDENCE = {"low", "medium", "high"}
 ALLOWED_MERGE_RECOMMENDATION = {"approve", "block", "manual_review"}
@@ -23,12 +23,24 @@ REQUIRED_FIELDS: dict[str, type] = {
     "partially_covered_classes": list,
     "uncovered_classes": list,
     "unknown_coverage_files": list,
+    "policy": dict,
+    "policy_violations": list,
+    "policy_warnings": list,
     "missing_test_scenarios": list,
     "recommended_tests": list,
     "confidence": str,
     "blocking_reasons": list,
     "merge_recommendation": str,
     "safety_boundary": str,
+}
+
+REQUIRED_POLICY_FIELDS: dict[str, type] = {
+    "minimum_line_coverage_for_changed_classes": (int, float),
+    "minimum_method_coverage_for_changed_classes": (int, float),
+    "require_test_changes_when_production_code_changes": bool,
+    "fail_on_unknown_coverage": bool,
+    "fail_on_missing_surefire_evidence": bool,
+    "fail_on_missing_jacoco_evidence": bool,
 }
 
 REQUIRED_CHANGED_CLASS_FIELDS: dict[str, type] = {
@@ -73,11 +85,27 @@ def validate_contract(payload: dict[str, Any]) -> list[str]:
     if isinstance(payload.get("merge_recommendation"), str) and payload["merge_recommendation"] not in ALLOWED_MERGE_RECOMMENDATION:
         errors.append(f"Invalid merge_recommendation: {payload['merge_recommendation']}")
 
+    policy = payload.get("policy")
+    if isinstance(policy, dict):
+        for field, expected_type in REQUIRED_POLICY_FIELDS.items():
+            if field not in policy:
+                errors.append(f"Missing policy.{field}")
+                continue
+            if not isinstance(policy[field], expected_type):
+                errors.append(f"Invalid type for policy.{field}")
+
     for field in ("missing_test_scenarios", "recommended_tests", "blocking_reasons"):
         value = payload.get(field)
         if isinstance(value, list):
             if not value:
                 errors.append(f"List field must not be empty: {field}")
+            for index, item in enumerate(value):
+                if not isinstance(item, str) or not item.strip():
+                    errors.append(f"Invalid list item for {field}[{index}]")
+
+    for field in ("policy_violations", "policy_warnings"):
+        value = payload.get(field)
+        if isinstance(value, list):
             for index, item in enumerate(value):
                 if not isinstance(item, str) or not item.strip():
                     errors.append(f"Invalid list item for {field}[{index}]")

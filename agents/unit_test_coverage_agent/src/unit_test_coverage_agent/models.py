@@ -90,6 +90,16 @@ class ChangedClassCoverage:
 
 
 @dataclass(frozen=True)
+class CoveragePolicy:
+    minimum_line_coverage_for_changed_classes: float
+    minimum_method_coverage_for_changed_classes: float
+    require_test_changes_when_production_code_changes: bool
+    fail_on_unknown_coverage: bool
+    fail_on_missing_surefire_evidence: bool
+    fail_on_missing_jacoco_evidence: bool
+
+
+@dataclass(frozen=True)
 class CoverageAssessment:
     schema_version: str
     coverage_status: str
@@ -103,6 +113,9 @@ class CoverageAssessment:
     partially_covered_classes: tuple[str, ...]
     uncovered_classes: tuple[str, ...]
     unknown_coverage_files: tuple[str, ...]
+    policy: CoveragePolicy
+    policy_violations: tuple[str, ...]
+    policy_warnings: tuple[str, ...]
     missing_test_scenarios: tuple[str, ...]
     recommended_tests: tuple[str, ...]
     confidence: str

@@ -11,12 +11,13 @@ Current version:
 - parses existing Surefire XML reports;
 - parses existing JaCoCo XML reports;
 - maps changed Java code to JaCoCo class/method coverage;
+- evaluates coverage against configurable repository policy;
 - generates validated JSON and markdown reports;
 - optionally refines the deterministic report using LangChain + OpenAI;
 - generates advisory patch proposal artifacts for missing/partial test coverage;
 - does not mutate code;
 - does not create PRs;
-- does not enforce coverage thresholds.
+- does not enforce branch protection by itself.
 
 ## Providers
 
@@ -59,6 +60,7 @@ gpt-4.1-mini
 base_ref
 head_ref
 provider
+policy
 ```
 
 Deterministic example:
@@ -69,6 +71,7 @@ python -m unit_test_coverage_agent.main \
   --repository-root . \
   --base-ref origin/main \
   --head-ref HEAD \
+  --policy coverage-policy.yml \
   --provider deterministic \
   --output coverage-agent/output/unit-test-coverage-report.md \
   --json-output coverage-agent/output/unit-test-coverage-report.json \
@@ -88,6 +91,7 @@ python -m unit_test_coverage_agent.main \
   --repository-root . \
   --base-ref origin/main \
   --head-ref HEAD \
+  --policy coverage-policy.yml \
   --provider langchain-openai \
   --output coverage-agent/output/unit-test-coverage-report.md \
   --json-output coverage-agent/output/unit-test-coverage-report.json \
@@ -95,6 +99,27 @@ python -m unit_test_coverage_agent.main \
   --patch-proposal-output coverage-agent/output/unit-test-coverage-patch-proposal.md \
   --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json
 ```
+
+## Coverage policy
+
+Default policy file:
+
+```text
+coverage-policy.yml
+```
+
+Supported fields:
+
+```text
+minimum_line_coverage_for_changed_classes
+minimum_method_coverage_for_changed_classes
+require_test_changes_when_production_code_changes
+fail_on_unknown_coverage
+fail_on_missing_surefire_evidence
+fail_on_missing_jacoco_evidence
+```
+
+The policy is advisory by default. It influences the generated report, PR comment, and merge recommendation, but it does not configure GitHub branch protection automatically.
 
 ## Evidence sources
 
@@ -104,6 +129,7 @@ The agent reads:
 git diff --name-only <base_ref>...<head_ref>
 */target/surefire-reports/TEST-*.xml
 */target/site/jacoco/jacoco.xml
+coverage-policy.yml
 ```
 
 ## Output
@@ -137,6 +163,7 @@ partial
 insufficient
 unknown
 not_applicable
+policy_violation
 ```
 
 ## Safety boundary
