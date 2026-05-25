@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from .models import ChangedClassCoverage, CoverageAssessment, GitDiffEvidence, JacocoClassCoverage, JacocoEvidence, SurefireEvidence
+from .models import ChangedClassCoverage, CoverageAssessment, CoveragePolicy, GitDiffEvidence, JacocoClassCoverage, JacocoEvidence, SurefireEvidence
+from .policy import DEFAULT_POLICY, evaluate_policy
 
 SCHEMA_VERSION = "1.0"
 SAFETY_BOUNDARY = (
@@ -101,7 +102,12 @@ def _changed_class_coverage(production_files: list[str], git: GitDiffEvidence, j
     return tuple(results)
 
 
-def assess_coverage(git: GitDiffEvidence, surefire: SurefireEvidence, jacoco: JacocoEvidence) -> CoverageAssessment:
+def assess_coverage(
+    git: GitDiffEvidence,
+    surefire: SurefireEvidence,
+    jacoco: JacocoEvidence,
+    policy: CoveragePolicy = DEFAULT_POLICY,
+) -> CoverageAssessment:
     production_files = [item.path for item in git.changed_files if item.category == "production-java"]
     test_files = [item.path for item in git.changed_files if item.category == "test-java"]
     changed_services = _unique([item.service for item in git.changed_files])
@@ -139,7 +145,21 @@ def assess_coverage(git: GitDiffEvidence, surefire: SurefireEvidence, jacoco: Ja
             for method in class_coverage.uncovered_methods:
                 recommended_tests.append(f"Add a test covering `{class_coverage.expected_class_name}.{method}`.")
 
-    if uncovered_classes:
+    policy_violations, policy_warnings = evaluate_policy(
+        policy=policy,
+        production_files=production_files,
+        test_files=test_files,
+        surefire_reports_found=surefire.reports_found,
+        jacoco_reports_found=jacoco.reports_found,
+        changed_class_coverage=changed_class_coverage,
+    )
+    blocking_reasons.extend(policy_violations)
+
+    if policy_violations:
+        coverage_status = "policy_violation"
+        merge_recommendation = "manual_review"
+        confidence = "medium"
+    elif uncovered_classes:
         coverage_status = "insufficient"
         merge_recommendation = "block"
         confidence = "medium"
@@ -177,6 +197,9 @@ def assess_coverage(git: GitDiffEvidence, surefire: SurefireEvidence, jacoco: Ja
         partially_covered_classes=tuple(partially_covered_classes),
         uncovered_classes=tuple(uncovered_classes),
         unknown_coverage_files=tuple(unknown_files),
+        policy=policy,
+        policy_violations=policy_violations,
+        policy_warnings=policy_warnings,
         missing_test_scenarios=tuple(_unique(missing_test_scenarios) or ("No deterministic missing-test scenario was detected.",)),
         recommended_tests=tuple(_unique(recommended_tests) or ("No deterministic test recommendation was generated.",)),
         confidence=confidence,
