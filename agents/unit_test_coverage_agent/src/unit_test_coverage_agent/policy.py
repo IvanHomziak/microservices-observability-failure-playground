@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from .models import ChangedClassCoverage, CoveragePolicy
 
@@ -57,7 +56,13 @@ def _read_simple_yaml(path: Path) -> dict[str, str]:
 
 
 def load_policy(repository_root: Path, policy_path: Path | None = None) -> CoveragePolicy:
-    path = policy_path if policy_path is not None else repository_root / "coverage-policy.yml"
+    if policy_path is not None:
+        path = policy_path
+        if not path.exists():
+            raise FileNotFoundError(f"Explicit coverage policy file does not exist: {path}")
+    else:
+        path = repository_root / "coverage-policy.yml"
+
     raw = _read_simple_yaml(path)
 
     allowed = set(DEFAULT_POLICY.__dataclass_fields__.keys())
