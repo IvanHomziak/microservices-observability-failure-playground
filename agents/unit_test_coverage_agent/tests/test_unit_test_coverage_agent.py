@@ -16,6 +16,7 @@ from unit_test_coverage_agent.jacoco_loader import load_jacoco_evidence
 from unit_test_coverage_agent.models import GitDiffEvidence
 from unit_test_coverage_agent.output_schema import assessment_to_contract, validate_contract
 from unit_test_coverage_agent.patch_proposal import build_patch_proposal, patch_proposal_to_dict, render_patch_proposal_markdown
+from unit_test_coverage_agent.policy import load_policy
 from unit_test_coverage_agent.pr_comment import COMMENT_MARKER, render_pr_comment
 from unit_test_coverage_agent.prompt_builder import build_coverage_reasoning_prompt
 from unit_test_coverage_agent.providers import get_provider
@@ -121,23 +122,27 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
         assessment = assess_coverage(git, SurefireEvidence(0, ()), JacocoEvidence(0, ()))
         contract = assessment_to_contract(assessment)
 
-        self.assertEqual("unknown", contract["coverage_status"])
+        self.assertEqual("policy_violation", contract["coverage_status"])
         self.assertEqual("manual_review", contract["merge_recommendation"])
         self.assertFalse(validate_contract(contract))
         self.assertIn("orders-service/src/main/java/com/example/OrderService.java", contract["unknown_coverage_files"])
         self.assertEqual("unknown", contract["changed_class_coverage"][0]["status"])
+        self.assertTrue(contract["policy_violations"])
+        self.assertTrue(contract["policy_warnings"])
 
     def test_assessment_partial_with_uncovered_method(self) -> None:
         contract = build_partial_contract()
         markdown = render_markdown(contract)
 
-        self.assertEqual("partial", contract["coverage_status"])
+        self.assertEqual("policy_violation", contract["coverage_status"])
         self.assertEqual("manual_review", contract["merge_recommendation"])
         self.assertIn("com.example.OrderService", contract["partially_covered_classes"])
         self.assertEqual("partial", contract["changed_class_coverage"][0]["status"])
         self.assertEqual(66.67, contract["changed_class_coverage"][0]["line_coverage_percent"])
         self.assertIn("cancelOrder()V", contract["changed_class_coverage"][0]["uncovered_methods"])
         self.assertIn("Changed class coverage", markdown)
+        self.assertIn("Coverage policy", markdown)
+        self.assertIn("Policy violations", markdown)
         self.assertIn("cancelOrder()V", markdown)
 
     def test_assessment_sufficient_with_full_jacoco_coverage(self) -> None:
@@ -169,6 +174,30 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
             self.assertIn("com.example.OrderService", contract["covered_classes"])
             self.assertFalse(validate_contract(contract))
 
+    def test_policy_loader_reads_simple_yaml_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            policy_path = root / "coverage-policy.yml"
+            write(
+                policy_path,
+                """minimum_line_coverage_for_changed_classes: 80
+minimum_method_coverage_for_changed_classes: 75
+require_test_changes_when_production_code_changes: false
+fail_on_unknown_coverage: true
+fail_on_missing_surefire_evidence: true
+fail_on_missing_jacoco_evidence: true
+""",
+            )
+
+            policy = load_policy(root)
+
+            self.assertEqual(80.0, policy.minimum_line_coverage_for_changed_classes)
+            self.assertEqual(75.0, policy.minimum_method_coverage_for_changed_classes)
+            self.assertFalse(policy.require_test_changes_when_production_code_changes)
+            self.assertTrue(policy.fail_on_unknown_coverage)
+            self.assertTrue(policy.fail_on_missing_surefire_evidence)
+            self.assertTrue(policy.fail_on_missing_jacoco_evidence)
+
     def test_prompt_builder_contains_safety_constraints(self) -> None:
         contract = build_partial_contract()
         prompt = build_coverage_reasoning_prompt(contract)
@@ -177,6 +206,7 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
         self.assertIn("Do not invent files, classes, methods, tests, coverage percentages, or validation results", prompt)
         self.assertIn("Return only JSON", prompt)
         self.assertIn("cancelOrder", prompt)
+        self.assertIn("policy_violations", prompt)
 
     def test_deterministic_provider_returns_valid_contract_without_external_call(self) -> None:
         contract = build_partial_contract()
@@ -221,7 +251,8 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
 
         self.assertIn(COMMENT_MARKER, comment)
         self.assertIn("Unit Test Coverage Agent", comment)
-        self.assertIn("Coverage status: `partial`", comment)
+        self.assertIn("Coverage status: `policy_violation`", comment)
+        self.assertIn("Policy violations", comment)
         self.assertIn("shouldCoverCancelOrder", comment)
         self.assertIn("does not authorize code mutation", comment)
 
