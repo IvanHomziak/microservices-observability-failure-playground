@@ -11,6 +11,7 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE_ROOT / "src"))
 
 from unit_test_coverage_agent.assessment import assess_coverage
+from unit_test_coverage_agent.enforce_policy import enforce_policy
 from unit_test_coverage_agent.git_diff import classify_file
 from unit_test_coverage_agent.jacoco_loader import load_jacoco_evidence
 from unit_test_coverage_agent.models import GitDiffEvidence
@@ -203,6 +204,26 @@ fail_on_missing_jacoco_evidence: true
             root = Path(temp_dir)
             with self.assertRaises(FileNotFoundError):
                 load_policy(root, root / "missing-policy.yml")
+
+    def test_policy_enforcement_fails_on_policy_violations(self) -> None:
+        contract = build_partial_contract()
+
+        passed, violations, warnings = enforce_policy(contract)
+
+        self.assertFalse(passed)
+        self.assertTrue(violations)
+        self.assertIsInstance(warnings, list)
+
+    def test_policy_enforcement_passes_without_policy_violations(self) -> None:
+        contract = build_partial_contract()
+        contract["policy_violations"] = []
+        contract["coverage_status"] = "partial"
+
+        passed, violations, warnings = enforce_policy(contract)
+
+        self.assertTrue(passed)
+        self.assertEqual([], violations)
+        self.assertIsInstance(warnings, list)
 
     def test_prompt_builder_contains_safety_constraints(self) -> None:
         contract = build_partial_contract()
