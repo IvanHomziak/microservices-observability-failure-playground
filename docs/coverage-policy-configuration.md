@@ -27,6 +27,16 @@ fail_on_missing_surefire_evidence: false
 fail_on_missing_jacoco_evidence: false
 ```
 
+If the default `<repository-root>/coverage-policy.yml` file is absent, the agent uses built-in defaults.
+
+If an explicit policy path is passed through:
+
+```bash
+--policy <path>
+```
+
+that file must exist. Missing explicit policy files fail fast to avoid silently using defaults after a typo.
+
 ## Supported settings
 
 | Setting | Meaning |
@@ -60,6 +70,8 @@ Unknown keys fail fast.
 Invalid percentages fail fast.
 
 Invalid booleans fail fast.
+
+Missing explicit policy files fail fast.
 
 ## Output contract additions
 
