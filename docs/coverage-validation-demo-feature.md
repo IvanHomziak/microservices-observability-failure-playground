@@ -20,7 +20,8 @@ This allows the coverage agent to verify:
 - changed-code-to-coverage mapping;
 - patch proposal behavior;
 - coverage policy behavior;
-- PR comment rendering.
+- PR comment rendering;
+- automatic pull request coverage validation through `Unit Test Coverage PR Agent`.
 
 ## Feature
 
@@ -53,9 +54,21 @@ The class is pure Java and has no dependencies on:
 
 This makes it suitable for stable CI validation of Surefire and JaCoCo artifacts.
 
-## How to validate
+## How to validate automatically
 
-Run:
+After `Unit Test Coverage PR Agent` is available on `main`, every update to this branch should automatically run:
+
+```text
+Unit Test Coverage PR Agent
+```
+
+on the open validation pull request.
+
+This is the preferred validation path because it does not depend on manual `workflow_dispatch`.
+
+## How to validate manually
+
+Manual validation can still be attempted through:
 
 ```text
 Actions -> Unit Test Coverage Agent -> Run workflow
@@ -70,14 +83,16 @@ run_tests: true
 provider: deterministic
 ```
 
-Expected changed files:
+However, the primary validation path is the automatic pull-request workflow.
+
+## Expected changed files
 
 ```text
 orders-service/src/main/java/com/playground/ordersservice/app/OrderRiskClassifier.java
 orders-service/src/test/java/com/playground/ordersservice/app/OrderRiskClassifierTest.java
 ```
 
-Expected artifacts:
+## Expected artifacts
 
 ```text
 unit-test-coverage-report.md
