@@ -7,6 +7,7 @@ on:
       - "**/src/test/java/**"
       - "**/pom.xml"
       - "coverage-policy.yml"
+      - "coverage-policy-pr.yml"
       - "agents/unit_test_coverage_agent/**"
       - ".github/workflows/unit-test-coverage-pr-agent.yml"
 
@@ -29,6 +30,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -74,6 +82,7 @@ jobs:
             --repository-root . \
             --base-ref "$COVERAGE_BASE_REF" \
             --head-ref "$COVERAGE_HEAD_REF" \
+            --policy coverage-policy-pr.yml \
             --provider deterministic \
             --output coverage-agent/output/unit-test-coverage-report.md \
             --json-output coverage-agent/output/unit-test-coverage-report.json \
@@ -89,7 +98,15 @@ jobs:
           cat coverage-agent/output/unit-test-coverage-report.md
           cat coverage-agent/output/unit-test-coverage-patch-proposal.md
 
+      - name: Enforce coverage policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="agents/unit_test_coverage_agent/src" python -m unit_test_coverage_agent.enforce_policy \
+            --coverage-json coverage-agent/output/unit-test-coverage-report.json
+
       - name: Upload coverage agent artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: unit-test-coverage-pr-agent-${{ github.run_id }}
