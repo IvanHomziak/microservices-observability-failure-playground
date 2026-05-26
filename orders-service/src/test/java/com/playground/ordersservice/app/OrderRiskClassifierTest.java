@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OrderRiskClassifierTest {
+    // Intentional validation test fixture for the Unit Test Coverage PR Agent.
     private final OrderRiskClassifier classifier = new OrderRiskClassifier();
 
     @Test
