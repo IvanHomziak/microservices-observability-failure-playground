@@ -22,6 +22,7 @@ on:
       - "**/src/test/java/**"
       - "**/pom.xml"
       - "coverage-policy.yml"
+      - "coverage-policy-pr.yml"
       - "agents/unit_test_coverage_agent/**"
       - ".github/workflows/unit-test-coverage-pr-agent.yml"
 ```
@@ -52,6 +53,41 @@ permissions:
   actions: read
 ```
 
+## Java runtime
+
+The workflow configures Java 21 explicitly:
+
+```yaml
+uses: actions/setup-java@v4
+with:
+  distribution: temurin
+  java-version: "21"
+  cache: maven
+```
+
+This is required because the services compile with Java release 21. Without this setup, Maven can fail before tests run, producing no Surefire or JaCoCo evidence.
+
+## Strict PR policy
+
+The PR workflow uses:
+
+```text
+coverage-policy-pr.yml
+```
+
+This policy is stricter than the default advisory policy.
+
+It fails on:
+
+```text
+unknown changed-class coverage
+missing Surefire XML evidence
+missing JaCoCo XML evidence
+production Java changes without Java test changes
+line coverage below threshold
+method coverage below threshold
+```
+
 ## Flow
 
 ```text
@@ -61,19 +97,44 @@ pull request update
 checkout PR code
         |
         v
+setup Java 21
+        |
+        v
 validate coverage agent Python package
         |
         v
 run Maven verify for services
         |
         v
-generate deterministic coverage report
+generate deterministic coverage report with coverage-policy-pr.yml
         |
         v
-upload coverage artifacts
+enforce coverage policy
+        |
+        v
+upload coverage artifacts even on failure
+```
+
+## Enforcement behavior
+
+The workflow runs:
+
+```bash
+python -m unit_test_coverage_agent.enforce_policy \
+  --coverage-json coverage-agent/output/unit-test-coverage-report.json
+```
+
+Rules:
+
+```text
+policy_violations empty -> job succeeds
+policy_violations non-empty -> job fails
+policy_warnings only -> job succeeds
 ```
 
 ## Generated artifacts
+
+Artifacts are uploaded with `if: always()` so they are available even when enforcement fails:
 
 ```text
 unit-test-coverage-report.md
@@ -94,7 +155,11 @@ After this workflow is merged into `main`, update the validation branch:
 feature/coverage-validation-demo
 ```
 
-by pushing any small commit.
+by pushing any small commit that touches a trigger path, for example:
+
+```text
+orders-service/src/test/java/com/playground/ordersservice/app/OrderRiskClassifierTest.java
+```
 
 That should automatically trigger:
 
@@ -125,6 +190,7 @@ supports:
 workflow_dispatch
 deterministic provider
 optional langchain-openai provider
+advisory reporting
 ```
 
 PR workflow:
@@ -138,6 +204,7 @@ supports only:
 ```text
 pull_request
 deterministic provider
+strict PR policy enforcement
 ```
 
 This separation prevents accidental mixing of PR code, secrets, and LLM provider configuration.
