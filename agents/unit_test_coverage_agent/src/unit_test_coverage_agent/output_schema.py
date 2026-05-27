@@ -18,6 +18,11 @@ REQUIRED_FIELDS: dict[str, type] = {
     "changed_services": list,
     "surefire_reports_found": int,
     "jacoco_reports_found": int,
+    "test_total_count": int,
+    "test_failure_count": int,
+    "test_error_count": int,
+    "test_skipped_count": int,
+    "failed_test_suites": list,
     "test_execution_failures": list,
     "changed_class_coverage": list,
     "covered_classes": list,
@@ -43,6 +48,7 @@ REQUIRED_POLICY_FIELDS: dict[str, type] = {
     "fail_on_missing_surefire_evidence": bool,
     "fail_on_missing_jacoco_evidence": bool,
     "fail_on_maven_verification_failure": bool,
+    "fail_on_test_failures": bool,
 }
 
 REQUIRED_CHANGED_CLASS_FIELDS: dict[str, type] = {
@@ -112,6 +118,19 @@ def validate_contract(payload: dict[str, Any]) -> list[str]:
                 if not isinstance(item, str) or not item.strip():
                     errors.append(f"Invalid list item for {field}[{index}]")
 
+    failed_test_suites = payload.get("failed_test_suites")
+    if isinstance(failed_test_suites, list):
+        for index, item in enumerate(failed_test_suites):
+            if not isinstance(item, dict):
+                errors.append(f"Invalid failed_test_suites[{index}]: expected object")
+                continue
+            for field, expected_type in REQUIRED_FAILED_SUITE_FIELDS.items():
+                if field not in item:
+                    errors.append(f"Missing failed_test_suites[{index}].{field}")
+                    continue
+                if not isinstance(item[field], expected_type):
+                    errors.append(f"Invalid type for failed_test_suites[{index}].{field}: expected {expected_type.__name__}")
+
     changed_class_coverage = payload.get("changed_class_coverage")
     if isinstance(changed_class_coverage, list):
         for index, item in enumerate(changed_class_coverage):
@@ -143,3 +162,12 @@ def validate_contract(payload: dict[str, Any]) -> list[str]:
 
 def render_contract_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False)
+
+
+REQUIRED_FAILED_SUITE_FIELDS: dict[str, type] = {
+    "file": str,
+    "tests": int,
+    "failures": int,
+    "errors": int,
+    "skipped": int,
+}

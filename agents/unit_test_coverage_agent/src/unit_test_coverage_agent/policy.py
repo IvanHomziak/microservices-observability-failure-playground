@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .models import ChangedClassCoverage, CoveragePolicy
+from .models import ChangedClassCoverage, CoveragePolicy, SurefireSuite
 
 DEFAULT_POLICY = CoveragePolicy(
     minimum_line_coverage_for_changed_classes=70.0,
@@ -12,6 +12,7 @@ DEFAULT_POLICY = CoveragePolicy(
     fail_on_missing_surefire_evidence=False,
     fail_on_missing_jacoco_evidence=False,
     fail_on_maven_verification_failure=False,
+    fail_on_test_failures=False,
 )
 
 
@@ -118,6 +119,10 @@ def load_policy(repository_root: Path, policy_path: Path | None = None) -> Cover
             ),
             field="fail_on_maven_verification_failure",
         ),
+        fail_on_test_failures=_parse_bool(
+            raw.get("fail_on_test_failures", str(DEFAULT_POLICY.fail_on_test_failures)),
+            field="fail_on_test_failures",
+        ),
     )
 
 
@@ -130,6 +135,9 @@ def evaluate_policy(
     jacoco_reports_found: int,
     changed_class_coverage: tuple[ChangedClassCoverage, ...],
     test_execution_failures: list[str] | tuple[str, ...],
+    test_failure_count: int = 0,
+    test_error_count: int = 0,
+    failed_test_suites: tuple[SurefireSuite, ...] = (),
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     violations: list[str] = []
     warnings: list[str] = []
@@ -153,6 +161,19 @@ def evaluate_policy(
         )
         if policy.fail_on_maven_verification_failure:
             violations.append(f"Policy violation: {message}")
+        else:
+            warnings.append(f"Policy warning: {message}")
+
+
+    if test_failure_count > 0 or test_error_count > 0:
+        message = (
+            f"unit tests failed with {test_failure_count} failure(s) and {test_error_count} error(s)."
+        )
+        suite_files = ", ".join(sorted({suite.file for suite in failed_test_suites}))
+        if policy.fail_on_test_failures:
+            violations.append(f"Policy violation: {message}")
+            if suite_files:
+                violations.append(f"Policy violation: failing Surefire suites: {suite_files}")
         else:
             warnings.append(f"Policy warning: {message}")
 

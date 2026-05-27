@@ -63,6 +63,24 @@ def _append_changed_class_coverage(lines: list[str], payload: dict[str, Any]) ->
     lines.append("")
 
 
+def _append_failed_test_suites(lines: list[str], payload: dict[str, Any]) -> None:
+    lines.append("## Failed test suites")
+    lines.append("")
+    suites = payload.get("failed_test_suites", [])
+    if not suites:
+        lines.append("- None")
+        lines.append("")
+        return
+
+    lines.append("| File | Tests | Failures | Errors | Skipped |")
+    lines.append("|---|---:|---:|---:|---:|")
+    for suite in suites:
+        lines.append(
+            f"| `{suite.get('file', '')}` | {suite.get('tests', 0)} | {suite.get('failures', 0)} | {suite.get('errors', 0)} | {suite.get('skipped', 0)} |"
+        )
+    lines.append("")
+
+
 def render_markdown(payload: dict[str, Any]) -> str:
     lines: list[str] = []
     lines.append("# Unit Test Coverage Agent Report")
@@ -74,6 +92,11 @@ def render_markdown(payload: dict[str, Any]) -> str:
     lines.append(f"- Confidence: `{payload['confidence']}`")
     lines.append(f"- Surefire reports found: `{payload['surefire_reports_found']}`")
     lines.append(f"- JaCoCo reports found: `{payload['jacoco_reports_found']}`")
+    lines.append(f"- Tests total: `{payload['test_total_count']}`")
+    lines.append(f"- Test failures: `{payload['test_failure_count']}`")
+    lines.append(f"- Test errors: `{payload['test_error_count']}`")
+    lines.append(f"- Test skipped: `{payload['test_skipped_count']}`")
+    lines.append(f"- Failed test suites count: `{len(payload.get('failed_test_suites', []))}`")
     lines.append(f"- Policy violations: `{len(payload.get('policy_violations', []))}`")
     lines.append(f"- Policy warnings: `{len(payload.get('policy_warnings', []))}`")
     lines.append(f"- Test execution failures: `{len(payload.get('test_execution_failures', []))}`")
@@ -83,6 +106,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
     _append_list(lines, "Changed services", payload["changed_services"])
     _append_list(lines, "Changed production files", payload["changed_production_files"])
     _append_list(lines, "Changed test files", payload["changed_test_files"])
+    _append_failed_test_suites(lines, payload)
     _append_changed_class_coverage(lines, payload)
     _append_list(lines, "Covered classes", payload["covered_classes"])
     _append_list(lines, "Partially covered classes", payload["partially_covered_classes"])

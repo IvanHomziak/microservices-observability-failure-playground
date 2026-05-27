@@ -235,3 +235,45 @@ Strict PR policy (`coverage-policy-pr.yml`) now includes:
 When enabled, Maven verification failures become policy violations (not warnings), allowing enforcement to fail the PR check when test execution evidence is incomplete.
 
 The workflow remains deterministic-only and read-only (no secrets, no OpenAI/LangChain, no write permissions, no PR comments, no code mutation).
+
+## Surefire failure/error classification
+
+The deterministic coverage agent now treats Surefire unit-test failures/errors as first-class evidence, not only as proof that reports exist.
+
+Structured JSON contract fields include:
+
+- `test_total_count`
+- `test_failure_count`
+- `test_error_count`
+- `test_skipped_count`
+- `failed_test_suites`
+
+`failed_test_suites` is populated from Surefire suites where `failures > 0` or `errors > 0`.
+
+## Strict policy behavior for failing tests
+
+`coverage-policy-pr.yml` now includes:
+
+- `fail_on_test_failures: true`
+
+When enabled, any Surefire failure/error count produces a policy violation and policy enforcement fails the PR check.
+
+When disabled (advisory mode), the same condition is reported as a policy warning.
+
+Coverage evidence is not considered trustworthy for merge decisions when tests fail, even if raw coverage percentages are high.
+
+## Report visibility
+
+Generated JSON and Markdown artifacts now expose aggregate test execution counts and the list of failing Surefire suites.
+
+Markdown includes a `Failed test suites` section with per-suite file/counts.
+
+## Safety model remains unchanged
+
+The PR workflow remains deterministic-only/read-only:
+
+- no OpenAI/LangChain provider use
+- no secrets
+- no write permissions
+- no PR comments
+- no code mutation
