@@ -107,6 +107,7 @@ def assess_coverage(
     surefire: SurefireEvidence,
     jacoco: JacocoEvidence,
     policy: CoveragePolicy = DEFAULT_POLICY,
+    test_execution_failures: tuple[str, ...] = (),
 ) -> CoverageAssessment:
     production_files = [item.path for item in git.changed_files if item.category == "production-java"]
     test_files = [item.path for item in git.changed_files if item.category == "test-java"]
@@ -130,6 +131,12 @@ def assess_coverage(
         missing_test_scenarios.append("No JaCoCo XML reports were found, so changed-code coverage is unknown.")
         recommended_tests.append("Run service tests with JaCoCo XML report generation enabled.")
 
+    for service in test_execution_failures:
+        missing_test_scenarios.append(
+            f"Maven verification failed for `{service}`, so test and coverage evidence may be incomplete."
+        )
+        recommended_tests.append(f"Fix Maven verification for `{service}` before trusting coverage results.")
+
     if production_files and surefire.reports_found == 0:
         missing_test_scenarios.append("No Surefire XML reports were found, so test execution evidence is missing.")
         recommended_tests.append("Run Maven tests and publish target/surefire-reports artifacts.")
@@ -151,6 +158,7 @@ def assess_coverage(
         test_files=test_files,
         surefire_reports_found=surefire.reports_found,
         jacoco_reports_found=jacoco.reports_found,
+        test_execution_failures=test_execution_failures,
         changed_class_coverage=changed_class_coverage,
     )
     blocking_reasons.extend(policy_violations)
@@ -192,6 +200,7 @@ def assess_coverage(
         changed_services=changed_services,
         surefire_reports_found=surefire.reports_found,
         jacoco_reports_found=jacoco.reports_found,
+        test_execution_failures=test_execution_failures,
         changed_class_coverage=changed_class_coverage,
         covered_classes=tuple(covered_classes),
         partially_covered_classes=tuple(partially_covered_classes),

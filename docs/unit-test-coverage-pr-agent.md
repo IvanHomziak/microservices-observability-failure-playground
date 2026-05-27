@@ -103,7 +103,10 @@ setup Java 21
 validate coverage agent Python package
         |
         v
-run Maven verify for services
+detect affected services from PR diff
+        |
+        v
+run Maven verify for affected services only
         |
         v
 generate deterministic coverage report with coverage-policy-pr.yml
@@ -208,3 +211,27 @@ strict PR policy enforcement
 ```
 
 This separation prevents accidental mixing of PR code, secrets, and LLM provider configuration.
+
+## Affected-service detection and Maven failure evidence
+
+The PR workflow now writes deterministic raw evidence files:
+
+- `coverage-agent/raw/changed-files.txt`
+- `coverage-agent/raw/affected-services.txt`
+- `coverage-agent/raw/maven-failed-services.txt`
+
+Affected services are detected from the git diff using the Unit Test Coverage Agent code. Behavior:
+
+- Service-local changes in `production-java`, `test-java`, `build-config`, or `service-other` categories run Maven only for those services.
+- Global coverage/agent/workflow/policy changes (`coverage-policy.yml`, `coverage-policy-pr.yml`, `.github/workflows/*`, `agents/unit_test_coverage_agent/*`) run Maven for all known services.
+- Docs-only changes produce an empty `affected-services.txt`, so Maven verification is skipped.
+
+`maven-failed-services.txt` is consumed by the report generator via `--test-execution-failures-file` and surfaced as structured `test_execution_failures` in JSON/Markdown output.
+
+Strict PR policy (`coverage-policy-pr.yml`) now includes:
+
+- `fail_on_maven_verification_failure: true`
+
+When enabled, Maven verification failures become policy violations (not warnings), allowing enforcement to fail the PR check when test execution evidence is incomplete.
+
+The workflow remains deterministic-only and read-only (no secrets, no OpenAI/LangChain, no write permissions, no PR comments, no code mutation).

@@ -27,13 +27,24 @@ def main() -> int:
     parser.add_argument("--prompt-output", type=Path, default=None, help="Optional bounded prompt artifact output path")
     parser.add_argument("--patch-proposal-output", type=Path, default=None, help="Optional markdown patch proposal artifact output path")
     parser.add_argument("--patch-proposal-json-output", type=Path, default=None, help="Optional JSON patch proposal artifact output path")
+    parser.add_argument("--test-execution-failures-file", type=Path, default=None, help="Optional newline-delimited file with services whose Maven verify failed")
     args = parser.parse_args()
 
     policy = load_policy(args.repository_root, args.policy)
     git = load_changed_files(args.repository_root, args.base_ref, args.head_ref)
     surefire = load_surefire_evidence(args.repository_root)
     jacoco = load_jacoco_evidence(args.repository_root)
-    assessment = assess_coverage(git, surefire, jacoco, policy)
+    failures: tuple[str, ...] = ()
+    if args.test_execution_failures_file is not None and args.test_execution_failures_file.exists():
+        failures = tuple(
+            dict.fromkeys(
+                line.strip()
+                for line in args.test_execution_failures_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+        )
+
+    assessment = assess_coverage(git, surefire, jacoco, policy, test_execution_failures=failures)
     deterministic_contract = assessment_to_contract(assessment)
 
     if args.prompt_output is not None:
@@ -75,6 +86,7 @@ def main() -> int:
     print(f"Merge recommendation: {contract['merge_recommendation']}")
     print(f"Policy violations: {len(contract.get('policy_violations', []))}")
     print(f"Policy warnings: {len(contract.get('policy_warnings', []))}")
+    print(f"Test execution failures: {len(contract.get('test_execution_failures', []))}")
     print(f"Patch proposal status: {patch_proposal.proposal_status}")
     return 0
 

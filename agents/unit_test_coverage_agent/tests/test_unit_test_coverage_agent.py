@@ -10,11 +10,12 @@ from unittest.mock import patch
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE_ROOT / "src"))
 
+from unit_test_coverage_agent.affected_services import detect_affected_services
 from unit_test_coverage_agent.assessment import assess_coverage
 from unit_test_coverage_agent.enforce_policy import enforce_policy
 from unit_test_coverage_agent.git_diff import classify_file
 from unit_test_coverage_agent.jacoco_loader import load_jacoco_evidence
-from unit_test_coverage_agent.models import GitDiffEvidence
+from unit_test_coverage_agent.models import CoveragePolicy, GitDiffEvidence
 from unit_test_coverage_agent.output_schema import assessment_to_contract, validate_contract
 from unit_test_coverage_agent.patch_proposal import build_patch_proposal, patch_proposal_to_dict, render_patch_proposal_markdown
 from unit_test_coverage_agent.policy import load_policy
@@ -83,6 +84,37 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
         self.assertEqual("workflow", classify_file(".github/workflows/unit-test-coverage-agent.yml").category)
         self.assertEqual("docs", classify_file("docs/example.md").category)
 
+
+    def test_detect_affected_services_service_local_java_change(self) -> None:
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=("orders-service/src/main/java/com/example/OrderService.java",),
+            changed_files=(classify_file("orders-service/src/main/java/com/example/OrderService.java"),),
+        )
+        self.assertEqual(("orders-service",), detect_affected_services(git))
+
+    def test_detect_affected_services_global_change_returns_all_services(self) -> None:
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=("agents/unit_test_coverage_agent/src/unit_test_coverage_agent/main.py",),
+            changed_files=(classify_file("agents/unit_test_coverage_agent/src/unit_test_coverage_agent/main.py"),),
+        )
+        self.assertEqual(
+            ("api-gateway", "audit-service", "inventory-service", "notification-service", "orders-service", "payments-service"),
+            detect_affected_services(git),
+        )
+
+    def test_detect_affected_services_docs_only_returns_empty(self) -> None:
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=("docs/example.md",),
+            changed_files=(classify_file("docs/example.md"),),
+        )
+        self.assertEqual((), detect_affected_services(git))
+
     def test_load_surefire_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -121,6 +153,7 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
         from unit_test_coverage_agent.models import JacocoEvidence, SurefireEvidence
 
         assessment = assess_coverage(git, SurefireEvidence(0, ()), JacocoEvidence(0, ()))
+        self.assertEqual((), assessment.test_execution_failures)
         contract = assessment_to_contract(assessment)
 
         self.assertEqual("policy_violation", contract["coverage_status"])
@@ -187,6 +220,7 @@ require_test_changes_when_production_code_changes: false
 fail_on_unknown_coverage: true
 fail_on_missing_surefire_evidence: true
 fail_on_missing_jacoco_evidence: true
+fail_on_maven_verification_failure: true
 """,
             )
 
@@ -198,6 +232,7 @@ fail_on_missing_jacoco_evidence: true
             self.assertTrue(policy.fail_on_unknown_coverage)
             self.assertTrue(policy.fail_on_missing_surefire_evidence)
             self.assertTrue(policy.fail_on_missing_jacoco_evidence)
+            self.assertTrue(policy.fail_on_maven_verification_failure)
 
     def test_policy_loader_fails_when_explicit_policy_path_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -282,6 +317,50 @@ fail_on_missing_jacoco_evidence: true
         self.assertIn("Policy violations", comment)
         self.assertIn("shouldCoverCancelOrder", comment)
         self.assertIn("does not authorize code mutation", comment)
+
+
+    def test_assessment_maven_failure_can_be_policy_violation(self) -> None:
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=("orders-service/src/main/java/com/example/OrderService.java",),
+            changed_files=(classify_file("orders-service/src/main/java/com/example/OrderService.java"),),
+        )
+        from unit_test_coverage_agent.models import JacocoEvidence, SurefireEvidence
+
+        strict = CoveragePolicy(
+            minimum_line_coverage_for_changed_classes=70.0,
+            minimum_method_coverage_for_changed_classes=70.0,
+            require_test_changes_when_production_code_changes=False,
+            fail_on_unknown_coverage=False,
+            fail_on_missing_surefire_evidence=False,
+            fail_on_missing_jacoco_evidence=False,
+            fail_on_maven_verification_failure=True,
+        )
+        assessment = assess_coverage(
+            git,
+            SurefireEvidence(0, ()),
+            JacocoEvidence(0, ()),
+            strict,
+            test_execution_failures=("orders-service",),
+        )
+        contract = assessment_to_contract(assessment)
+
+        self.assertIn("orders-service", contract["test_execution_failures"])
+        self.assertTrue(any("Maven verification failed for `orders-service`" in x for x in contract["policy_violations"]))
+
+    def test_markdown_includes_test_execution_failures_section(self) -> None:
+        contract = build_partial_contract()
+        contract["test_execution_failures"] = ["orders-service"]
+        markdown = render_markdown(contract)
+        self.assertIn("## Test execution failures", markdown)
+        self.assertIn("orders-service", markdown)
+
+    def test_output_schema_validates_test_execution_failures(self) -> None:
+        contract = build_partial_contract()
+        contract["test_execution_failures"] = [""]
+        errors = validate_contract(contract)
+        self.assertTrue(any("test_execution_failures" in e for e in errors))
 
 
 if __name__ == "__main__":
