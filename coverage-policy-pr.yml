@@ -11,3 +11,5 @@ fail_on_missing_surefire_evidence: true
 fail_on_missing_jacoco_evidence: true
 
 fail_on_maven_verification_failure: true
+
+fail_on_test_failures: true

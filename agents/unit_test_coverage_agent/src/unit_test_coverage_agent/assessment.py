@@ -141,6 +141,10 @@ def assess_coverage(
         missing_test_scenarios.append("No Surefire XML reports were found, so test execution evidence is missing.")
         recommended_tests.append("Run Maven tests and publish target/surefire-reports artifacts.")
 
+    if surefire.total_failures > 0 or surefire.total_errors > 0:
+        missing_test_scenarios.append("Surefire reported failing unit tests, so coverage evidence may not represent a valid passing build.")
+        recommended_tests.append("Fix failing unit tests before trusting coverage results.")
+
     for class_coverage in changed_class_coverage:
         if class_coverage.status == "unknown":
             recommended_tests.append(f"Generate JaCoCo evidence for changed class `{class_coverage.expected_class_name}`.")
@@ -158,6 +162,9 @@ def assess_coverage(
         test_files=test_files,
         surefire_reports_found=surefire.reports_found,
         jacoco_reports_found=jacoco.reports_found,
+        test_failure_count=surefire.total_failures,
+        test_error_count=surefire.total_errors,
+        failed_test_suites=surefire.failed_suites,
         test_execution_failures=test_execution_failures,
         changed_class_coverage=changed_class_coverage,
     )
@@ -200,6 +207,11 @@ def assess_coverage(
         changed_services=changed_services,
         surefire_reports_found=surefire.reports_found,
         jacoco_reports_found=jacoco.reports_found,
+        test_total_count=surefire.total_tests,
+        test_failure_count=surefire.total_failures,
+        test_error_count=surefire.total_errors,
+        test_skipped_count=surefire.total_skipped,
+        failed_test_suites=surefire.failed_suites,
         test_execution_failures=test_execution_failures,
         changed_class_coverage=changed_class_coverage,
         covered_classes=tuple(covered_classes),

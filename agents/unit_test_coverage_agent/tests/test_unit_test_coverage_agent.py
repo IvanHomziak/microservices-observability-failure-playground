@@ -72,7 +72,7 @@ def build_partial_contract() -> dict:
         )
         from unit_test_coverage_agent.models import SurefireEvidence
 
-        assessment = assess_coverage(git, SurefireEvidence(1, ()), load_jacoco_evidence(root))
+        assessment = assess_coverage(git, SurefireEvidence(1, (), total_tests=1), load_jacoco_evidence(root))
         return assessment_to_contract(assessment)
 
 
@@ -128,6 +128,27 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
             self.assertEqual(1, evidence.reports_found)
             self.assertEqual(3, evidence.suites[0].tests)
             self.assertEqual(1, evidence.suites[0].failures)
+            self.assertEqual(3, evidence.total_tests)
+            self.assertEqual(1, evidence.total_failures)
+            self.assertEqual(0, evidence.total_errors)
+            self.assertEqual(1, len(evidence.failed_suites))
+
+
+    def test_load_surefire_evidence_without_failures_has_empty_failed_suites(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root / "orders-service" / "target" / "surefire-reports" / "TEST-com.example.OrderServiceTest.xml",
+                '<testsuite tests="4" failures="0" errors="0" skipped="1" time="0.12"></testsuite>',
+            )
+
+            evidence = load_surefire_evidence(root)
+
+            self.assertEqual(4, evidence.total_tests)
+            self.assertEqual(0, evidence.total_failures)
+            self.assertEqual(0, evidence.total_errors)
+            self.assertEqual(1, evidence.total_skipped)
+            self.assertEqual((), evidence.failed_suites)
 
     def test_load_jacoco_evidence_includes_method_counters(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -200,7 +221,7 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
             )
             from unit_test_coverage_agent.models import SurefireEvidence
 
-            assessment = assess_coverage(git, SurefireEvidence(1, ()), load_jacoco_evidence(root))
+            assessment = assess_coverage(git, SurefireEvidence(1, (), total_tests=1), load_jacoco_evidence(root))
             contract = assessment_to_contract(assessment)
 
             self.assertEqual("sufficient", contract["coverage_status"])
@@ -221,6 +242,7 @@ fail_on_unknown_coverage: true
 fail_on_missing_surefire_evidence: true
 fail_on_missing_jacoco_evidence: true
 fail_on_maven_verification_failure: true
+fail_on_test_failures: true
 """,
             )
 
@@ -233,6 +255,7 @@ fail_on_maven_verification_failure: true
             self.assertTrue(policy.fail_on_missing_surefire_evidence)
             self.assertTrue(policy.fail_on_missing_jacoco_evidence)
             self.assertTrue(policy.fail_on_maven_verification_failure)
+            self.assertTrue(policy.fail_on_test_failures)
 
     def test_policy_loader_fails_when_explicit_policy_path_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -336,6 +359,7 @@ fail_on_maven_verification_failure: true
             fail_on_missing_surefire_evidence=False,
             fail_on_missing_jacoco_evidence=False,
             fail_on_maven_verification_failure=True,
+            fail_on_test_failures=True,
         )
         assessment = assess_coverage(
             git,
@@ -349,11 +373,70 @@ fail_on_maven_verification_failure: true
         self.assertIn("orders-service", contract["test_execution_failures"])
         self.assertTrue(any("Maven verification failed for `orders-service`" in x for x in contract["policy_violations"]))
 
+
+    def test_assessment_test_failures_can_be_policy_violation(self) -> None:
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=("orders-service/src/main/java/com/example/OrderService.java",),
+            changed_files=(classify_file("orders-service/src/main/java/com/example/OrderService.java"),),
+        )
+        from unit_test_coverage_agent.models import JacocoEvidence, SurefireEvidence, SurefireSuite
+
+        strict = CoveragePolicy(
+            minimum_line_coverage_for_changed_classes=70.0,
+            minimum_method_coverage_for_changed_classes=70.0,
+            require_test_changes_when_production_code_changes=False,
+            fail_on_unknown_coverage=False,
+            fail_on_missing_surefire_evidence=False,
+            fail_on_missing_jacoco_evidence=False,
+            fail_on_maven_verification_failure=False,
+            fail_on_test_failures=True,
+        )
+        surefire = SurefireEvidence(
+            reports_found=1,
+            suites=(SurefireSuite("orders-service/target/surefire-reports/TEST-x.xml", 5, 1, 1, 0, 0.1),),
+            total_tests=5,
+            total_failures=1,
+            total_errors=1,
+            failed_suites=(SurefireSuite("orders-service/target/surefire-reports/TEST-x.xml", 5, 1, 1, 0, 0.1),),
+        )
+        assessment = assess_coverage(git, surefire, JacocoEvidence(0, ()), strict)
+        contract = assessment_to_contract(assessment)
+
+        self.assertEqual("policy_violation", contract["coverage_status"])
+        self.assertTrue(any("unit tests failed" in x for x in contract["policy_violations"]))
+
+    def test_assessment_test_failures_can_be_warning_in_advisory_policy(self) -> None:
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=(),
+            changed_files=(),
+        )
+        from unit_test_coverage_agent.models import JacocoEvidence, SurefireEvidence
+
+        advisory = CoveragePolicy(
+            minimum_line_coverage_for_changed_classes=70.0,
+            minimum_method_coverage_for_changed_classes=70.0,
+            require_test_changes_when_production_code_changes=False,
+            fail_on_unknown_coverage=False,
+            fail_on_missing_surefire_evidence=False,
+            fail_on_missing_jacoco_evidence=False,
+            fail_on_maven_verification_failure=False,
+            fail_on_test_failures=False,
+        )
+        assessment = assess_coverage(git, SurefireEvidence(1, (), total_failures=1), JacocoEvidence(0, ()), advisory)
+        contract = assessment_to_contract(assessment)
+        self.assertFalse(contract["policy_violations"])
+        self.assertTrue(any("unit tests failed" in x for x in contract["policy_warnings"]))
+
     def test_markdown_includes_test_execution_failures_section(self) -> None:
         contract = build_partial_contract()
         contract["test_execution_failures"] = ["orders-service"]
         markdown = render_markdown(contract)
         self.assertIn("## Test execution failures", markdown)
+        self.assertIn("## Failed test suites", markdown)
         self.assertIn("orders-service", markdown)
 
     def test_output_schema_validates_test_execution_failures(self) -> None:
@@ -361,6 +444,12 @@ fail_on_maven_verification_failure: true
         contract["test_execution_failures"] = [""]
         errors = validate_contract(contract)
         self.assertTrue(any("test_execution_failures" in e for e in errors))
+
+    def test_output_schema_validates_failed_test_suites(self) -> None:
+        contract = build_partial_contract()
+        contract["failed_test_suites"] = [{"file": "x", "tests": 1, "failures": 1, "errors": 0, "skipped": 0}]
+        errors = validate_contract(contract)
+        self.assertFalse(errors)
 
 
 if __name__ == "__main__":

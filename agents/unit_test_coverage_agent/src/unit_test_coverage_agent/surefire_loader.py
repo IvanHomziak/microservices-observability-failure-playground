@@ -45,4 +45,18 @@ def load_surefire_evidence(repository_root: Path) -> SurefireEvidence:
                 )
             )
 
-    return SurefireEvidence(reports_found=len(suites), suites=tuple(suites))
+    total_tests = sum(item.tests for item in suites)
+    total_failures = sum(item.failures for item in suites)
+    total_errors = sum(item.errors for item in suites)
+    total_skipped = sum(item.skipped for item in suites)
+    failed_suites = tuple(item for item in suites if item.failures > 0 or item.errors > 0)
+
+    return SurefireEvidence(
+        reports_found=len(suites),
+        suites=tuple(suites),
+        total_tests=total_tests,
+        total_failures=total_failures,
+        total_errors=total_errors,
+        total_skipped=total_skipped,
+        failed_suites=failed_suites,
+    )

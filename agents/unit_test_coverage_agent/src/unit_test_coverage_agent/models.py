@@ -33,6 +33,11 @@ class SurefireSuite:
 class SurefireEvidence:
     reports_found: int
     suites: tuple[SurefireSuite, ...]
+    total_tests: int = 0
+    total_failures: int = 0
+    total_errors: int = 0
+    total_skipped: int = 0
+    failed_suites: tuple[SurefireSuite, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -98,6 +103,7 @@ class CoveragePolicy:
     fail_on_missing_surefire_evidence: bool
     fail_on_missing_jacoco_evidence: bool
     fail_on_maven_verification_failure: bool
+    fail_on_test_failures: bool
 
 
 @dataclass(frozen=True)
@@ -109,6 +115,11 @@ class CoverageAssessment:
     changed_services: tuple[str, ...]
     surefire_reports_found: int
     jacoco_reports_found: int
+    test_total_count: int
+    test_failure_count: int
+    test_error_count: int
+    test_skipped_count: int
+    failed_test_suites: tuple[SurefireSuite, ...]
     test_execution_failures: tuple[str, ...]
     changed_class_coverage: tuple[ChangedClassCoverage, ...]
     covered_classes: tuple[str, ...]
