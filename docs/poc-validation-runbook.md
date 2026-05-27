@@ -315,6 +315,17 @@ maven-failed-services.txt
 
 Some artifacts are conditional and appear only when the workflow path creates them.
 
+
+## Final coverage-agent validation checklist
+
+Before declaring the coverage-agent quality gate complete:
+
+- Negative validation PR is red for `Unit Test Coverage PR Agent` and merge is blocked.
+- Positive validation PR is green for `Unit Test Coverage PR Agent`.
+- Branch protection is enabled on `main` with required status checks.
+- Workflow artifacts are available and downloadable for both validation paths.
+- PR comments are updated as expected, if PR comment workflow is enabled.
+
 ## Known limitations
 
 The POC does not yet provide:
