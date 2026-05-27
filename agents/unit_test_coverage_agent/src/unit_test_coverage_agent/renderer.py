@@ -140,6 +140,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
     _append_policy(lines, payload)
     _append_list(lines, "Changed services", payload["changed_services"])
     _append_list(lines, "Changed production files", payload["changed_production_files"])
+    _append_list(lines, "Deleted production files", payload.get("deleted_production_files", []))
+    _append_list(lines, "Coverage-relevant production files", payload.get("coverage_relevant_production_files", []))
     _append_list(lines, "Changed test files", payload["changed_test_files"])
     _append_failed_test_suites(lines, payload)
     _append_changed_class_coverage(lines, payload)

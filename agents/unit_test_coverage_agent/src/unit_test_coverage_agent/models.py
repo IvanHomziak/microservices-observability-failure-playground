@@ -9,6 +9,7 @@ class ChangedFile:
     path: str
     category: str
     service: str | None = None
+    change_status: str = "unknown"
 
 
 @dataclass(frozen=True)
@@ -127,6 +128,8 @@ class CoverageAssessment:
     schema_version: str
     coverage_status: str
     changed_production_files: tuple[str, ...]
+    deleted_production_files: tuple[str, ...]
+    coverage_relevant_production_files: tuple[str, ...]
     changed_test_files: tuple[str, ...]
     changed_services: tuple[str, ...]
     surefire_reports_found: int

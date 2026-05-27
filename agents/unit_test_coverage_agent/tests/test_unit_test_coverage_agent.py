@@ -117,6 +117,19 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
         )
         self.assertEqual((), detect_affected_services(git))
 
+    def test_detect_affected_services_global_workflow_and_policy_changes_return_all_services(self) -> None:
+        for changed_path in (".github/workflows/unit-test-coverage-pr-agent.yml", "coverage-policy-pr.yml"):
+            git = GitDiffEvidence(
+                base_ref="origin/main",
+                head_ref="HEAD",
+                raw_changed_files=(changed_path,),
+                changed_files=(classify_file(changed_path),),
+            )
+            self.assertEqual(
+                ("api-gateway", "audit-service", "inventory-service", "notification-service", "orders-service", "payments-service"),
+                detect_affected_services(git),
+            )
+
     def test_load_surefire_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -186,6 +199,53 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
         self.assertEqual("unknown", contract["changed_class_coverage"][0]["status"])
         self.assertTrue(contract["policy_violations"])
         self.assertTrue(contract["policy_warnings"])
+
+    def test_assessment_deleted_production_file_affects_service_but_not_coverage_or_no_test_violation(self) -> None:
+        changed = ChangedFile(
+            path="orders-service/src/main/java/com/example/DeletedFeature.java",
+            category="production-java",
+            service="orders-service",
+            change_status="deleted",
+        )
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=(changed.path,),
+            changed_files=(changed,),
+        )
+        from unit_test_coverage_agent.models import JacocoEvidence, SurefireEvidence
+
+        self.assertEqual(("orders-service",), detect_affected_services(git))
+        contract = assessment_to_contract(assess_coverage(git, SurefireEvidence(0, ()), JacocoEvidence(0, ())))
+        self.assertEqual(["orders-service/src/main/java/com/example/DeletedFeature.java"], contract["deleted_production_files"])
+        self.assertEqual([], contract["coverage_relevant_production_files"])
+        self.assertEqual([], contract["changed_class_coverage"])
+        self.assertNotIn(
+            "Policy violation: production Java files changed, but no Java test files changed.",
+            contract["policy_violations"],
+        )
+        self.assertEqual("not_applicable", contract["coverage_status"])
+
+    def test_assessment_added_and_modified_production_files_are_coverage_relevant(self) -> None:
+        added = ChangedFile(
+            path="orders-service/src/main/java/com/example/NewFeature.java",
+            category="production-java",
+            service="orders-service",
+            change_status="added",
+        )
+        modified = ChangedFile(
+            path="orders-service/src/main/java/com/example/ExistingFeature.java",
+            category="production-java",
+            service="orders-service",
+            change_status="modified",
+        )
+        git = GitDiffEvidence("origin/main", "HEAD", (added, modified), (added.path, modified.path))
+        from unit_test_coverage_agent.models import JacocoEvidence, SurefireEvidence
+
+        contract = assessment_to_contract(assess_coverage(git, SurefireEvidence(0, ()), JacocoEvidence(0, ())))
+        self.assertEqual([added.path, modified.path], contract["coverage_relevant_production_files"])
+        self.assertEqual([], contract["deleted_production_files"])
+        self.assertEqual(("orders-service",), detect_affected_services(git))
 
     def test_assessment_partial_with_uncovered_method(self) -> None:
         contract = build_partial_contract()

@@ -59,14 +59,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p coverage-agent/raw
+          git fetch --no-tags --prune --depth=1 origin "${{ github.base_ref }}:${{ github.base_ref }}" || true
+          git fetch --no-tags --prune --depth=1 origin "${{ github.base_ref }}" || true
           PYTHONPATH="agents/unit_test_coverage_agent/src" python - <<'PY'
+          import os
           from pathlib import Path
           from unit_test_coverage_agent.affected_services import detect_affected_services
           from unit_test_coverage_agent.git_diff import load_changed_files
 
           root = Path('.')
-          base_ref = "${COVERAGE_BASE_REF}"
-          head_ref = "${COVERAGE_HEAD_REF}"
+          base_ref = os.environ["COVERAGE_BASE_REF"]
+          head_ref = os.environ["COVERAGE_HEAD_REF"]
 
           git = load_changed_files(root, base_ref, head_ref)
           changed_output = root / "coverage-agent/raw/changed-files.txt"

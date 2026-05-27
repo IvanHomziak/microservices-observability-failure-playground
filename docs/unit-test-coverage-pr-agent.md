@@ -148,6 +148,7 @@ unit-test-coverage-patch-proposal.json
 coverage-reasoning-prompt.md
 pr-comment.md
 changed-files.txt
+affected-services.txt
 surefire-files.txt
 jacoco-files.txt
 ```
@@ -227,12 +228,28 @@ Affected services are detected from the git diff using the Unit Test Coverage Ag
 - Service-local changes in `production-java`, `test-java`, `build-config`, or `service-other` categories run Maven only for those services.
 - Global coverage/agent/workflow/policy changes (`coverage-policy.yml`, `coverage-policy-pr.yml`, `.github/workflows/*`, `agents/unit_test_coverage_agent/*`) run Maven for all known services.
 - Docs-only changes produce an empty `affected-services.txt`, so Maven verification is skipped.
+- Deleted production Java files still count for affected-service detection, so Maven verify still runs for that service to catch broken references.
+
+Diff parsing is status-aware (`git diff --name-status`) and normalizes statuses (`added`, `modified`, `deleted`, `renamed`, `copied`, `unknown`).
+
+Coverage behavior for production Java changes:
+
+- `added` / `modified` / `renamed` production Java files are coverage-relevant and participate in related-test and JaCoCo policy checks.
+- `deleted` production Java files are included in `changed-files.txt` and `changed_production_files`, but excluded from:
+  - `coverage_relevant_production_files`
+  - changed-class JaCoCo mapping
+  - related-test-required checks
+  - the "production Java changed but no Java test changed" policy violation
+
+This allows cleanup PRs deleting dead production files to still run Maven verification for impacted services without requiring tests/coverage for deleted classes.
 
 `maven-failed-services.txt` is consumed by the report generator via `--test-execution-failures-file` and surfaced as structured `test_execution_failures` in JSON/Markdown output.
 
 Strict PR policy (`coverage-policy-pr.yml`) now includes:
 
 - `fail_on_maven_verification_failure: true`
+
+For negative validation PRs, expected failure point is **Enforce coverage policy**, not **Detect affected services**.
 
 When enabled, Maven verification failures become policy violations (not warnings), allowing enforcement to fail the PR check when test execution evidence is incomplete.
 
