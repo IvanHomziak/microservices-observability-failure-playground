@@ -98,6 +98,7 @@ class ChangedClassCoverage:
 class CoveragePolicy:
     minimum_line_coverage_for_changed_classes: float
     minimum_method_coverage_for_changed_classes: float
+    minimum_branch_coverage_for_changed_classes: float
     require_test_changes_when_production_code_changes: bool
     fail_on_unknown_coverage: bool
     fail_on_missing_surefire_evidence: bool

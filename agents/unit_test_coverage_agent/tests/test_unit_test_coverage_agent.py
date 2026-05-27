@@ -237,6 +237,7 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
                 policy_path,
                 """minimum_line_coverage_for_changed_classes: 80
 minimum_method_coverage_for_changed_classes: 75
+minimum_branch_coverage_for_changed_classes: 55
 require_test_changes_when_production_code_changes: false
 fail_on_unknown_coverage: true
 fail_on_missing_surefire_evidence: true
@@ -250,6 +251,7 @@ fail_on_test_failures: true
 
             self.assertEqual(80.0, policy.minimum_line_coverage_for_changed_classes)
             self.assertEqual(75.0, policy.minimum_method_coverage_for_changed_classes)
+            self.assertEqual(55.0, policy.minimum_branch_coverage_for_changed_classes)
             self.assertFalse(policy.require_test_changes_when_production_code_changes)
             self.assertTrue(policy.fail_on_unknown_coverage)
             self.assertTrue(policy.fail_on_missing_surefire_evidence)
@@ -354,6 +356,7 @@ fail_on_test_failures: true
         strict = CoveragePolicy(
             minimum_line_coverage_for_changed_classes=70.0,
             minimum_method_coverage_for_changed_classes=70.0,
+            minimum_branch_coverage_for_changed_classes=60.0,
             require_test_changes_when_production_code_changes=False,
             fail_on_unknown_coverage=False,
             fail_on_missing_surefire_evidence=False,
@@ -386,6 +389,7 @@ fail_on_test_failures: true
         strict = CoveragePolicy(
             minimum_line_coverage_for_changed_classes=70.0,
             minimum_method_coverage_for_changed_classes=70.0,
+            minimum_branch_coverage_for_changed_classes=60.0,
             require_test_changes_when_production_code_changes=False,
             fail_on_unknown_coverage=False,
             fail_on_missing_surefire_evidence=False,
@@ -419,6 +423,7 @@ fail_on_test_failures: true
         advisory = CoveragePolicy(
             minimum_line_coverage_for_changed_classes=70.0,
             minimum_method_coverage_for_changed_classes=70.0,
+            minimum_branch_coverage_for_changed_classes=60.0,
             require_test_changes_when_production_code_changes=False,
             fail_on_unknown_coverage=False,
             fail_on_missing_surefire_evidence=False,
@@ -430,6 +435,73 @@ fail_on_test_failures: true
         contract = assessment_to_contract(assessment)
         self.assertFalse(contract["policy_violations"])
         self.assertTrue(any("unit tests failed" in x for x in contract["policy_warnings"]))
+
+
+    def test_branch_coverage_below_threshold_is_policy_violation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root / "orders-service" / "target" / "site" / "jacoco" / "jacoco.xml",
+                """<report name="orders-service"><package name="com/example"><class name="com/example/OrderService" sourcefilename="OrderService.java"><method name="createOrder" desc="()V" line="10"><counter type="LINE" missed="0" covered="3"/></method><counter type="LINE" missed="0" covered="10"/><counter type="METHOD" missed="0" covered="2"/><counter type="BRANCH" missed="3" covered="1"/></class><sourcefile name="OrderService.java"/></package></report>""",
+            )
+            git = GitDiffEvidence(
+                base_ref="origin/main",
+                head_ref="HEAD",
+                raw_changed_files=(
+                    "orders-service/src/main/java/com/example/OrderService.java",
+                    "orders-service/src/test/java/com/example/OrderServiceTest.java",
+                ),
+                changed_files=(
+                    classify_file("orders-service/src/main/java/com/example/OrderService.java"),
+                    classify_file("orders-service/src/test/java/com/example/OrderServiceTest.java"),
+                ),
+            )
+            from unit_test_coverage_agent.models import SurefireEvidence
+
+            assessment = assess_coverage(git, SurefireEvidence(1, (), total_tests=1), load_jacoco_evidence(root))
+            contract = assessment_to_contract(assessment)
+
+            self.assertEqual("policy_violation", contract["coverage_status"])
+            self.assertEqual("manual_review", contract["merge_recommendation"])
+            self.assertTrue(any("branch coverage" in x for x in contract["policy_violations"]))
+
+    def test_branch_coverage_not_enforced_for_classes_with_no_branches(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root / "orders-service" / "target" / "site" / "jacoco" / "jacoco.xml",
+                """<report name="orders-service"><package name="com/example"><class name="com/example/OrderService" sourcefilename="OrderService.java"><method name="createOrder" desc="()V" line="10"><counter type="LINE" missed="0" covered="3"/></method><counter type="LINE" missed="0" covered="10"/><counter type="METHOD" missed="0" covered="2"/><counter type="BRANCH" missed="0" covered="0"/></class><sourcefile name="OrderService.java"/></package></report>""",
+            )
+            git = GitDiffEvidence(
+                base_ref="origin/main",
+                head_ref="HEAD",
+                raw_changed_files=(
+                    "orders-service/src/main/java/com/example/OrderService.java",
+                    "orders-service/src/test/java/com/example/OrderServiceTest.java",
+                ),
+                changed_files=(
+                    classify_file("orders-service/src/main/java/com/example/OrderService.java"),
+                    classify_file("orders-service/src/test/java/com/example/OrderServiceTest.java"),
+                ),
+            )
+            from unit_test_coverage_agent.models import SurefireEvidence
+
+            assessment = assess_coverage(git, SurefireEvidence(1, (), total_tests=1), load_jacoco_evidence(root))
+            contract = assessment_to_contract(assessment)
+
+            self.assertIsNone(contract["changed_class_coverage"][0]["branch_coverage_percent"])
+            self.assertFalse(any("branch coverage" in x for x in contract["policy_violations"]))
+
+    def test_output_schema_requires_branch_policy_field(self) -> None:
+        contract = build_partial_contract()
+        self.assertIn("minimum_branch_coverage_for_changed_classes", contract["policy"])
+        self.assertFalse(validate_contract(contract))
+
+    def test_markdown_includes_branch_policy_and_branch_column(self) -> None:
+        contract = build_partial_contract()
+        markdown = render_markdown(contract)
+        self.assertIn("minimum_branch_coverage_for_changed_classes", markdown)
+        self.assertIn("Branch %", markdown)
 
     def test_markdown_includes_test_execution_failures_section(self) -> None:
         contract = build_partial_contract()

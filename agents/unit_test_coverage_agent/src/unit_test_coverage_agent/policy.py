@@ -7,6 +7,7 @@ from .models import ChangedClassCoverage, CoveragePolicy, SurefireSuite
 DEFAULT_POLICY = CoveragePolicy(
     minimum_line_coverage_for_changed_classes=70.0,
     minimum_method_coverage_for_changed_classes=70.0,
+    minimum_branch_coverage_for_changed_classes=60.0,
     require_test_changes_when_production_code_changes=True,
     fail_on_unknown_coverage=False,
     fail_on_missing_surefire_evidence=False,
@@ -86,6 +87,13 @@ def load_policy(repository_root: Path, policy_path: Path | None = None) -> Cover
                 str(DEFAULT_POLICY.minimum_method_coverage_for_changed_classes),
             ),
             field="minimum_method_coverage_for_changed_classes",
+        ),
+        minimum_branch_coverage_for_changed_classes=_parse_float(
+            raw.get(
+                "minimum_branch_coverage_for_changed_classes",
+                str(DEFAULT_POLICY.minimum_branch_coverage_for_changed_classes),
+            ),
+            field="minimum_branch_coverage_for_changed_classes",
         ),
         require_test_changes_when_production_code_changes=_parse_bool(
             raw.get(
@@ -198,6 +206,13 @@ def evaluate_policy(
                 "Policy violation: "
                 f"changed class `{item.expected_class_name}` method coverage is "
                 f"{item.method_coverage_percent}% below required {policy.minimum_method_coverage_for_changed_classes}%."
+            )
+
+        if item.branch_coverage_percent is not None and item.branch_coverage_percent < policy.minimum_branch_coverage_for_changed_classes:
+            violations.append(
+                "Policy violation: "
+                f"changed class `{item.expected_class_name}` branch coverage is "
+                f"{item.branch_coverage_percent}% below required {policy.minimum_branch_coverage_for_changed_classes}%."
             )
 
     return tuple(dict.fromkeys(violations)), tuple(dict.fromkeys(warnings))

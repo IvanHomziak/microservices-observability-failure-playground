@@ -86,6 +86,7 @@ missing JaCoCo XML evidence
 production Java changes without Java test changes
 line coverage below threshold
 method coverage below threshold
+branch coverage below threshold (when branch counters exist)
 ```
 
 ## Flow
@@ -277,3 +278,24 @@ The PR workflow remains deterministic-only/read-only:
 - no write permissions
 - no PR comments
 - no code mutation
+
+## Branch coverage policy
+
+The strict PR policy now enforces:
+
+```yaml
+minimum_branch_coverage_for_changed_classes: 60
+```
+
+Why this matters:
+
+- Line coverage can be high while key conditional paths remain untested.
+- Branch coverage adds explicit visibility into conditional-path testing quality.
+
+Behavior details:
+
+- The threshold is a numeric percentage in the 0..100 range.
+- It applies only to changed production Java classes.
+- It is enforced only when JaCoCo reports branch counters for the changed class.
+- Classes with no branch counters (`missed=0`, `covered=0`) do not fail solely due to branch coverage.
+- Under strict PR policy, a branch-coverage threshold miss is a policy violation and fails the coverage check.
