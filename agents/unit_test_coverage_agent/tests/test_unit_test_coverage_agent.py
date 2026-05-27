@@ -20,6 +20,7 @@ from unit_test_coverage_agent.output_schema import assessment_to_contract, valid
 from unit_test_coverage_agent.patch_proposal import build_patch_proposal, patch_proposal_to_dict, render_patch_proposal_markdown
 from unit_test_coverage_agent.policy import load_policy
 from unit_test_coverage_agent.pr_comment import COMMENT_MARKER, render_pr_comment
+from unit_test_coverage_agent.pr_summary_comment import _truncate_markdown, render_pr_summary_comment
 from unit_test_coverage_agent.prompt_builder import build_coverage_reasoning_prompt
 from unit_test_coverage_agent.providers import get_provider
 from unit_test_coverage_agent.renderer import render_markdown
@@ -287,6 +288,59 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
             self.assertIn("a.b.FooA", row["mapping_candidates"])
             self.assertIn("c.d.FooB", row["mapping_candidates"])
 
+
+
+    def test_pr_summary_comment_contains_marker_and_summary(self) -> None:
+        contract = build_partial_contract()
+        patch = {"proposal_status": "proposal_available", "proposed_test_scenarios": [{"production_class": "com.example.OrderService", "suggested_test_file": "OrderServiceTest.java"}]}
+        comment = render_pr_summary_comment(contract, patch)
+        self.assertIn(COMMENT_MARKER, comment)
+        self.assertIn("**Status:** `policy_violation`", comment)
+        self.assertIn("**Recommendation:** `manual_review`", comment)
+        self.assertIn("| Policy violations |", comment)
+        self.assertIn("| Policy warnings |", comment)
+
+    def test_pr_summary_comment_truncates_lists_and_details(self) -> None:
+        contract = build_partial_contract()
+        contract["policy_violations"] = [f"violation-{i}" for i in range(25)]
+        full_md = "x" * 200
+        comment = render_pr_summary_comment(contract, {}, full_report_markdown=full_md, max_full_report_chars=50, max_inline_items=20)
+        self.assertIn("violation-0", comment)
+        self.assertIn("violation-19", comment)
+        self.assertNotIn("violation-24", comment)
+        self.assertIn("Only first 20 items shown", comment)
+        self.assertIn("<details>", comment)
+        self.assertIn("...truncated...", comment)
+
+    def test_pr_summary_comment_includes_mapping_and_test_execution_and_safety(self) -> None:
+        contract = build_partial_contract()
+        contract["test_total_count"] = 11
+        contract["test_failure_count"] = 1
+        contract["test_error_count"] = 2
+        contract["test_skipped_count"] = 3
+        contract["failed_test_suites"] = [{"file": "TEST-a.xml", "tests": 1, "failures": 1, "errors": 0, "skipped": 0}]
+        contract["related_test_evidence"] = [{
+            "production_file": "orders-service/src/main/java/com/example/OrderService.java",
+            "expected_class_name": "com.example.OrderService",
+            "expected_test_files": ["OrderServiceTest.java"],
+            "matched_test_files": ["OrderServiceTest.java"],
+            "status": "matched",
+        }]
+        patch = {"proposal_status": "proposal_available", "proposed_test_scenarios": [{"production_class": "com.example.OrderService", "suggested_test_file": "OrderServiceTest.java"}],}
+        comment = render_pr_summary_comment(contract, patch, patch_proposal_markdown="proposal")
+        self.assertIn("Changed class coverage", comment)
+        self.assertIn("exact_class_name", comment)
+        self.assertIn("high", comment)
+        self.assertIn("### Test execution", comment)
+        self.assertIn("### Failed test suites", comment)
+        self.assertIn("### Related test evidence", comment)
+        self.assertIn("Patch proposal details", comment)
+        self.assertIn("does not authorize code mutation", comment)
+
+    def test_truncate_markdown(self) -> None:
+        self.assertEqual("abc", _truncate_markdown("abc", 10))
+        self.assertIn("...truncated...", _truncate_markdown("a" * 20, 5))
+
     def test_policy_loader_reads_simple_yaml_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -396,9 +450,9 @@ fail_on_test_failures: true
 
         self.assertIn(COMMENT_MARKER, comment)
         self.assertIn("Unit Test Coverage Agent", comment)
-        self.assertIn("Coverage status: `policy_violation`", comment)
+        self.assertIn("**Status:** `policy_violation`", comment)
         self.assertIn("Policy violations", comment)
-        self.assertIn("shouldCoverCancelOrder", comment)
+        self.assertIn("Proposal status", comment)
         self.assertIn("does not authorize code mutation", comment)
 
 
