@@ -123,6 +123,13 @@ jobs:
           cat coverage-agent/output/unit-test-coverage-report.md
           cat coverage-agent/output/unit-test-coverage-patch-proposal.md
 
+          PYTHONPATH="agents/unit_test_coverage_agent/src" python -m unit_test_coverage_agent.pr_comment \
+            --coverage-json coverage-agent/output/unit-test-coverage-report.json \
+            --patch-proposal-json coverage-agent/output/unit-test-coverage-patch-proposal.json \
+            --coverage-md coverage-agent/output/unit-test-coverage-report.md \
+            --patch-proposal-md coverage-agent/output/unit-test-coverage-patch-proposal.md \
+            --output coverage-agent/output/pr-comment.md
+
       - name: Enforce coverage policy
         shell: bash
         run: |
@@ -141,6 +148,7 @@ jobs:
             coverage-agent/output/unit-test-coverage-patch-proposal.md
             coverage-agent/output/unit-test-coverage-patch-proposal.json
             coverage-agent/output/coverage-reasoning-prompt.md
+            coverage-agent/output/pr-comment.md
             coverage-agent/raw/*.txt
             */target/surefire-reports/TEST-*.xml
             */target/site/jacoco/jacoco.xml

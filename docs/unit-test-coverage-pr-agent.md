@@ -146,6 +146,7 @@ unit-test-coverage-report.json
 unit-test-coverage-patch-proposal.md
 unit-test-coverage-patch-proposal.json
 coverage-reasoning-prompt.md
+pr-comment.md
 changed-files.txt
 surefire-files.txt
 jacoco-files.txt
@@ -335,3 +336,6 @@ Strategy order:
 Exact class match is always preferred. If filename-based matches are ambiguous across classes/services, the result stays `unmatched` and coverage status remains `unknown` for safety.
 
 The Markdown report now includes `Mapping` and `Confidence` columns plus a `Coverage mapping details` section with candidate classes for debugging.
+
+
+`pr-comment.md` is a presentation artifact for the separate PR comment workflow. Policy enforcement still depends on deterministic JSON policy checks in this PR agent workflow, not on comment text.

@@ -168,6 +168,8 @@ It reads:
 ```text
 unit-test-coverage-report.json
 unit-test-coverage-patch-proposal.json
+unit-test-coverage-report.md (optional, for collapsible full-report section)
+unit-test-coverage-patch-proposal.md (optional, for collapsible patch details)
 ```
 
 The coverage report JSON is validated using the local output schema before comment generation.
@@ -222,3 +224,24 @@ LLM/LangChain reasoning is intentionally not available in this write-scoped comm
 The workflow updates only the first matching `github-actions[bot]` comment containing the marker.
 
 It does not delete older duplicate comments if they already exist from previous versions of the workflow.
+
+## Summary-first comment format
+
+The renderer outputs a concise summary-first Markdown comment with:
+
+- status, recommendation, confidence
+- compact metrics table
+- policy violations/warnings (inline-limited)
+- changed class coverage table including mapping strategy/confidence
+- test execution and failed suite summaries when present
+- related test evidence when present
+- patch proposal summary
+- collapsible `<details>` sections for full report and patch proposal markdown
+
+Size guards are enforced to avoid huge comments:
+
+- inline list limits (default 20 items)
+- changed class table row limit (30 rows)
+- markdown truncation for details sections with `...truncated...` marker
+
+Full content remains available via workflow artifacts.

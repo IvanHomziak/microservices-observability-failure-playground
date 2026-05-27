@@ -187,6 +187,8 @@ jobs:
             python -m unit_test_coverage_agent.pr_comment \
               --coverage-json coverage-agent/output/unit-test-coverage-report.json \
               --patch-proposal-json coverage-agent/output/unit-test-coverage-patch-proposal.json \
+              --coverage-md coverage-agent/output/unit-test-coverage-report.md \
+              --patch-proposal-md coverage-agent/output/unit-test-coverage-patch-proposal.md \
               --output coverage-agent/output/pr-comment.md
 
           cat coverage-agent/output/pr-comment.md
