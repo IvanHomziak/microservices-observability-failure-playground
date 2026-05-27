@@ -15,7 +15,22 @@ SERVICE_ROOTS = {
 }
 
 
-def classify_file(path: str) -> ChangedFile:
+def _normalize_change_status(raw_status: str) -> str:
+    status = (raw_status or "").strip().upper()
+    if status.startswith("A"):
+        return "added"
+    if status.startswith("M"):
+        return "modified"
+    if status.startswith("D"):
+        return "deleted"
+    if status.startswith("R"):
+        return "renamed"
+    if status.startswith("C"):
+        return "copied"
+    return "unknown"
+
+
+def classify_file(path: str, change_status: str = "unknown") -> ChangedFile:
     parts = path.split("/")
     service = parts[0] if parts and parts[0] in SERVICE_ROOTS else None
 
@@ -34,7 +49,7 @@ def classify_file(path: str) -> ChangedFile:
     else:
         category = "other"
 
-    return ChangedFile(path=path, category=category, service=service)
+    return ChangedFile(path=path, category=category, service=service, change_status=change_status)
 
 
 def _run_git(args: list[str], repository_root: Path) -> str:
@@ -53,12 +68,27 @@ def _run_git(args: list[str], repository_root: Path) -> str:
 
 def load_changed_files(repository_root: Path, base_ref: str, head_ref: str) -> GitDiffEvidence:
     diff_range = f"{base_ref}...{head_ref}"
-    output = _run_git(["diff", "--name-only", diff_range], repository_root)
-    raw_files = tuple(line.strip() for line in output.splitlines() if line.strip())
-    changed_files = tuple(classify_file(path) for path in raw_files)
+    output = _run_git(["diff", "--name-status", "--find-renames", "--find-copies", diff_range], repository_root)
+    raw_files: list[str] = []
+    changed_files_list: list[ChangedFile] = []
+    for line in output.splitlines():
+        entry = line.strip()
+        if not entry:
+            continue
+        parts = entry.split("\t")
+        if len(parts) < 2:
+            continue
+        status = _normalize_change_status(parts[0])
+        path = parts[-1].strip()
+        if not path:
+            continue
+        raw_files.append(path)
+        changed_files_list.append(classify_file(path, change_status=status))
+    raw_files_tuple = tuple(raw_files)
+    changed_files = tuple(changed_files_list)
     return GitDiffEvidence(
         base_ref=base_ref,
         head_ref=head_ref,
         changed_files=changed_files,
-        raw_changed_files=raw_files,
+        raw_changed_files=raw_files_tuple,
     )

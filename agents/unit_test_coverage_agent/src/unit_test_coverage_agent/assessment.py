@@ -165,11 +165,17 @@ def assess_coverage(
     policy: CoveragePolicy = DEFAULT_POLICY,
     test_execution_failures: tuple[str, ...] = (),
 ) -> CoverageAssessment:
-    production_files = [item.path for item in git.changed_files if item.category == "production-java"]
+    changed_production_files = [item.path for item in git.changed_files if item.category == "production-java"]
+    deleted_production_files = [
+        item.path for item in git.changed_files if item.category == "production-java" and item.change_status == "deleted"
+    ]
+    coverage_relevant_production_files = [
+        item.path for item in git.changed_files if item.category == "production-java" and item.change_status != "deleted"
+    ]
     test_files = [item.path for item in git.changed_files if item.category == "test-java"]
     changed_services = _unique([item.service for item in git.changed_files])
-    changed_class_coverage = _changed_class_coverage(production_files, git, jacoco)
-    related_test_evidence = build_related_test_evidence(production_files, test_files)
+    changed_class_coverage = _changed_class_coverage(coverage_relevant_production_files, git, jacoco)
+    related_test_evidence = build_related_test_evidence(coverage_relevant_production_files, test_files)
 
     covered_classes = [item.expected_class_name for item in changed_class_coverage if item.status == "covered"]
     partially_covered_classes = [item.expected_class_name for item in changed_class_coverage if item.status == "partial"]
@@ -181,7 +187,7 @@ def assess_coverage(
     recommended_tests: list[str] = []
     blocking_reasons: list[str] = []
 
-    if production_files and not test_files:
+    if coverage_relevant_production_files and not test_files:
         missing_test_scenarios.append("Production Java files changed, but no Java test files changed in the diff.")
         recommended_tests.append("Add or update unit tests for changed production classes.")
 
@@ -190,7 +196,7 @@ def assess_coverage(
             missing_test_scenarios.append(f"Changed production class `{item.expected_class_name}` has no related changed test file.")
             recommended_tests.append(f"Add or update a related test for `{item.expected_class_name}`.")
 
-    if production_files and jacoco.reports_found == 0:
+    if coverage_relevant_production_files and jacoco.reports_found == 0:
         missing_test_scenarios.append("No JaCoCo XML reports were found, so changed-code coverage is unknown.")
         recommended_tests.append("Run service tests with JaCoCo XML report generation enabled.")
 
@@ -200,7 +206,7 @@ def assess_coverage(
         )
         recommended_tests.append(f"Fix Maven verification for `{service}` before trusting coverage results.")
 
-    if production_files and surefire.reports_found == 0:
+    if coverage_relevant_production_files and surefire.reports_found == 0:
         missing_test_scenarios.append("No Surefire XML reports were found, so test execution evidence is missing.")
         recommended_tests.append("Run Maven tests and publish target/surefire-reports artifacts.")
 
@@ -221,7 +227,7 @@ def assess_coverage(
 
     policy_violations, policy_warnings = evaluate_policy(
         policy=policy,
-        production_files=production_files,
+        production_files=coverage_relevant_production_files,
         test_files=test_files,
         surefire_reports_found=surefire.reports_found,
         jacoco_reports_found=jacoco.reports_found,
@@ -242,19 +248,19 @@ def assess_coverage(
         coverage_status = "insufficient"
         merge_recommendation = "block"
         confidence = "medium"
-    elif production_files and (unknown_files or jacoco.reports_found == 0):
+    elif coverage_relevant_production_files and (unknown_files or jacoco.reports_found == 0):
         coverage_status = "unknown"
         merge_recommendation = "manual_review"
         confidence = "low"
-    elif production_files and partially_covered_classes:
+    elif coverage_relevant_production_files and partially_covered_classes:
         coverage_status = "partial"
         merge_recommendation = "manual_review"
         confidence = "medium"
-    elif production_files and covered_classes:
+    elif coverage_relevant_production_files and covered_classes:
         coverage_status = "sufficient"
         merge_recommendation = "approve"
         confidence = "medium"
-    elif production_files:
+    elif coverage_relevant_production_files:
         coverage_status = "unknown"
         merge_recommendation = "manual_review"
         confidence = "low"
@@ -266,7 +272,9 @@ def assess_coverage(
     return CoverageAssessment(
         schema_version=SCHEMA_VERSION,
         coverage_status=coverage_status,
-        changed_production_files=tuple(production_files),
+        changed_production_files=tuple(changed_production_files),
+        deleted_production_files=tuple(deleted_production_files),
+        coverage_relevant_production_files=tuple(coverage_relevant_production_files),
         changed_test_files=tuple(test_files),
         changed_services=changed_services,
         surefire_reports_found=surefire.reports_found,

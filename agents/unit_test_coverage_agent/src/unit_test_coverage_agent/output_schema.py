@@ -23,6 +23,8 @@ REQUIRED_FIELDS: dict[str, type] = {
     "schema_version": str,
     "coverage_status": str,
     "changed_production_files": list,
+    "deleted_production_files": list,
+    "coverage_relevant_production_files": list,
     "changed_test_files": list,
     "changed_services": list,
     "surefire_reports_found": int,
