@@ -76,6 +76,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
     lines.append(f"- JaCoCo reports found: `{payload['jacoco_reports_found']}`")
     lines.append(f"- Policy violations: `{len(payload.get('policy_violations', []))}`")
     lines.append(f"- Policy warnings: `{len(payload.get('policy_warnings', []))}`")
+    lines.append(f"- Test execution failures: `{len(payload.get('test_execution_failures', []))}`")
     lines.append("")
 
     _append_policy(lines, payload)
@@ -89,6 +90,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
     _append_list(lines, "Unknown coverage files", payload["unknown_coverage_files"])
     _append_list(lines, "Policy violations", payload.get("policy_violations", []))
     _append_list(lines, "Policy warnings", payload.get("policy_warnings", []))
+    _append_list(lines, "Test execution failures", payload.get("test_execution_failures", []))
     _append_list(lines, "Missing test scenarios", payload["missing_test_scenarios"])
     _append_list(lines, "Recommended tests", payload["recommended_tests"])
     _append_list(lines, "Blocking reasons", payload["blocking_reasons"])

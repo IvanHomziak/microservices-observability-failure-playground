@@ -97,6 +97,7 @@ class CoveragePolicy:
     fail_on_unknown_coverage: bool
     fail_on_missing_surefire_evidence: bool
     fail_on_missing_jacoco_evidence: bool
+    fail_on_maven_verification_failure: bool
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,7 @@ class CoverageAssessment:
     changed_services: tuple[str, ...]
     surefire_reports_found: int
     jacoco_reports_found: int
+    test_execution_failures: tuple[str, ...]
     changed_class_coverage: tuple[ChangedClassCoverage, ...]
     covered_classes: tuple[str, ...]
     partially_covered_classes: tuple[str, ...]

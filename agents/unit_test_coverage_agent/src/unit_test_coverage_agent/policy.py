@@ -11,6 +11,7 @@ DEFAULT_POLICY = CoveragePolicy(
     fail_on_unknown_coverage=False,
     fail_on_missing_surefire_evidence=False,
     fail_on_missing_jacoco_evidence=False,
+    fail_on_maven_verification_failure=False,
 )
 
 
@@ -110,6 +111,13 @@ def load_policy(repository_root: Path, policy_path: Path | None = None) -> Cover
             ),
             field="fail_on_missing_jacoco_evidence",
         ),
+        fail_on_maven_verification_failure=_parse_bool(
+            raw.get(
+                "fail_on_maven_verification_failure",
+                str(DEFAULT_POLICY.fail_on_maven_verification_failure),
+            ),
+            field="fail_on_maven_verification_failure",
+        ),
     )
 
 
@@ -121,6 +129,7 @@ def evaluate_policy(
     surefire_reports_found: int,
     jacoco_reports_found: int,
     changed_class_coverage: tuple[ChangedClassCoverage, ...],
+    test_execution_failures: list[str] | tuple[str, ...],
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     violations: list[str] = []
     warnings: list[str] = []
@@ -137,6 +146,15 @@ def evaluate_policy(
         violations.append("Policy violation: JaCoCo XML evidence is required but was not found.")
     elif production_files and jacoco_reports_found == 0:
         warnings.append("Policy warning: JaCoCo XML evidence is missing.")
+
+    for service in test_execution_failures:
+        message = (
+            f"Maven verification failed for `{service}`, so coverage evidence may be incomplete or unreliable."
+        )
+        if policy.fail_on_maven_verification_failure:
+            violations.append(f"Policy violation: {message}")
+        else:
+            warnings.append(f"Policy warning: {message}")
 
     for item in changed_class_coverage:
         if item.status == "unknown":

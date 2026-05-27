@@ -18,6 +18,7 @@ REQUIRED_FIELDS: dict[str, type] = {
     "changed_services": list,
     "surefire_reports_found": int,
     "jacoco_reports_found": int,
+    "test_execution_failures": list,
     "changed_class_coverage": list,
     "covered_classes": list,
     "partially_covered_classes": list,
@@ -41,6 +42,7 @@ REQUIRED_POLICY_FIELDS: dict[str, type] = {
     "fail_on_unknown_coverage": bool,
     "fail_on_missing_surefire_evidence": bool,
     "fail_on_missing_jacoco_evidence": bool,
+    "fail_on_maven_verification_failure": bool,
 }
 
 REQUIRED_CHANGED_CLASS_FIELDS: dict[str, type] = {
@@ -103,7 +105,7 @@ def validate_contract(payload: dict[str, Any]) -> list[str]:
                 if not isinstance(item, str) or not item.strip():
                     errors.append(f"Invalid list item for {field}[{index}]")
 
-    for field in ("policy_violations", "policy_warnings"):
+    for field in ("policy_violations", "policy_warnings", "test_execution_failures"):
         value = payload.get(field)
         if isinstance(value, list):
             for index, item in enumerate(value):

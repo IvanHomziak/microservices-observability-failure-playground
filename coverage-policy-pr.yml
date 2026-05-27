@@ -9,3 +9,5 @@ require_test_changes_when_production_code_changes: true
 fail_on_unknown_coverage: true
 fail_on_missing_surefire_evidence: true
 fail_on_missing_jacoco_evidence: true
+
+fail_on_maven_verification_failure: true
