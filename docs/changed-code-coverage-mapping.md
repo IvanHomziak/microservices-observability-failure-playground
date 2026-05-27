@@ -121,3 +121,26 @@ This story makes the deterministic evidence contract strong enough for the next 
 ```text
 validated coverage evidence -> LangChain reasoning -> validated recommendation
 ```
+
+## PR-5 mapping strategy order
+
+Changed source files are mapped to JaCoCo evidence with deterministic fallbacks in this exact order:
+
+1. `exact_class_name` (high confidence)
+2. `nested_top_level_class` (high/medium confidence)
+3. `package_sourcefilename` (high confidence)
+4. `sourcefilename_service_scoped` (medium confidence)
+5. `sourcefilename_unscoped` (low confidence, only if globally unique)
+6. `unmatched` (low confidence)
+
+Ambiguous filename-only matches are intentionally left unmatched to avoid false positives across services.
+
+## New mapping metadata fields
+
+Each `changed_class_coverage` item now includes:
+
+- `mapping_strategy`
+- `mapping_confidence` (`high`, `medium`, `low`)
+- `mapping_candidates` (sorted candidate class names, capped)
+
+Use these fields to debug `unknown` coverage without guessing.
