@@ -21,6 +21,7 @@ Example:
 ```yaml
 minimum_line_coverage_for_changed_classes: 70
 minimum_method_coverage_for_changed_classes: 70
+minimum_branch_coverage_for_changed_classes: 60
 require_test_changes_when_production_code_changes: true
 fail_on_unknown_coverage: false
 fail_on_missing_surefire_evidence: false
@@ -43,6 +44,7 @@ that file must exist. Missing explicit policy files fail fast to avoid silently 
 |---|---|
 | `minimum_line_coverage_for_changed_classes` | Minimum required line coverage percentage for changed Java classes |
 | `minimum_method_coverage_for_changed_classes` | Minimum required method coverage percentage for changed Java classes |
+| `minimum_branch_coverage_for_changed_classes` | Minimum required branch coverage percentage for changed Java classes when JaCoCo reports branch counters for that class |
 | `require_test_changes_when_production_code_changes` | Adds a policy violation when production Java changes but no Java test files changed |
 | `fail_on_unknown_coverage` | Turns unknown changed-class coverage into a policy violation instead of warning |
 | `fail_on_missing_surefire_evidence` | Turns missing Surefire XML evidence into a policy violation instead of warning |

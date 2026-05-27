@@ -43,6 +43,7 @@ REQUIRED_FIELDS: dict[str, type] = {
 REQUIRED_POLICY_FIELDS: dict[str, type] = {
     "minimum_line_coverage_for_changed_classes": (int, float),
     "minimum_method_coverage_for_changed_classes": (int, float),
+    "minimum_branch_coverage_for_changed_classes": (int, float),
     "require_test_changes_when_production_code_changes": bool,
     "fail_on_unknown_coverage": bool,
     "fail_on_missing_surefire_evidence": bool,
