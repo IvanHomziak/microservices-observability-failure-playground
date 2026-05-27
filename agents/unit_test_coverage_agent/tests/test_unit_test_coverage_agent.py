@@ -23,6 +23,7 @@ from unit_test_coverage_agent.pr_comment import COMMENT_MARKER, render_pr_commen
 from unit_test_coverage_agent.prompt_builder import build_coverage_reasoning_prompt
 from unit_test_coverage_agent.providers import get_provider
 from unit_test_coverage_agent.renderer import render_markdown
+from unit_test_coverage_agent.related_tests import build_related_test_evidence
 from unit_test_coverage_agent.surefire_loader import load_surefire_evidence
 
 
@@ -358,6 +359,7 @@ fail_on_test_failures: true
             minimum_method_coverage_for_changed_classes=70.0,
             minimum_branch_coverage_for_changed_classes=60.0,
             require_test_changes_when_production_code_changes=False,
+            require_related_test_change_when_production_code_changes=True,
             fail_on_unknown_coverage=False,
             fail_on_missing_surefire_evidence=False,
             fail_on_missing_jacoco_evidence=False,
@@ -391,6 +393,7 @@ fail_on_test_failures: true
             minimum_method_coverage_for_changed_classes=70.0,
             minimum_branch_coverage_for_changed_classes=60.0,
             require_test_changes_when_production_code_changes=False,
+            require_related_test_change_when_production_code_changes=True,
             fail_on_unknown_coverage=False,
             fail_on_missing_surefire_evidence=False,
             fail_on_missing_jacoco_evidence=False,
@@ -425,6 +428,7 @@ fail_on_test_failures: true
             minimum_method_coverage_for_changed_classes=70.0,
             minimum_branch_coverage_for_changed_classes=60.0,
             require_test_changes_when_production_code_changes=False,
+            require_related_test_change_when_production_code_changes=True,
             fail_on_unknown_coverage=False,
             fail_on_missing_surefire_evidence=False,
             fail_on_missing_jacoco_evidence=False,
@@ -523,6 +527,57 @@ fail_on_test_failures: true
         errors = validate_contract(contract)
         self.assertFalse(errors)
 
+
+    def test_related_test_candidate_generation(self) -> None:
+        evidence = build_related_test_evidence(
+            ["orders-service/src/main/java/com/example/OrderRiskClassifier.java"],
+            [],
+        )
+        expected = set(evidence[0].expected_test_files)
+        self.assertIn("orders-service/src/test/java/com/example/OrderRiskClassifierTest.java", expected)
+        self.assertIn("orders-service/src/test/java/com/example/OrderRiskClassifierTests.java", expected)
+        self.assertIn("orders-service/src/test/java/com/example/OrderRiskClassifierIT.java", expected)
+        self.assertIn("orders-service/src/test/java/com/example/OrderRiskClassifierIntegrationTest.java", expected)
+
+    def test_related_test_evidence_missing_and_matched(self) -> None:
+        matched = build_related_test_evidence(
+            ["orders-service/src/main/java/com/example/OrderRiskClassifier.java"],
+            ["orders-service/src/test/java/com/example/OrderRiskClassifierTest.java"],
+        )[0]
+        self.assertEqual("matched", matched.status)
+        self.assertIn("orders-service/src/test/java/com/example/OrderRiskClassifierTest.java", matched.matched_test_files)
+
+        missing = build_related_test_evidence(
+            ["orders-service/src/main/java/com/example/OrderRiskClassifier.java"],
+            ["orders-service/src/test/java/com/example/UnrelatedTest.java"],
+        )[0]
+        self.assertEqual("missing", missing.status)
+
+    def test_related_test_filename_match_in_different_package(self) -> None:
+        evidence = build_related_test_evidence(
+            ["orders-service/src/main/java/com/example/OrderRiskClassifier.java"],
+            ["orders-service/src/test/java/com/example/feature/OrderRiskClassifierTest.java"],
+        )[0]
+        self.assertEqual("matched", evidence.status)
+
+    def test_policy_loader_reads_related_test_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(root / "coverage-policy.yml", "require_related_test_change_when_production_code_changes: true\n")
+            policy = load_policy(root)
+            self.assertTrue(policy.require_related_test_change_when_production_code_changes)
+
+    def test_schema_rejects_invalid_related_test_status(self) -> None:
+        contract = build_partial_contract()
+        contract["related_test_evidence"][0]["status"] = "bad_status"
+        errors = validate_contract(contract)
+        self.assertTrue(any("related_test_evidence[0].status" in error for error in errors))
+
+    def test_markdown_contains_related_test_section(self) -> None:
+        contract = build_partial_contract()
+        markdown = render_markdown(contract)
+        self.assertIn("Related test evidence", markdown)
+        self.assertIn("OrderService", markdown)
 
 if __name__ == "__main__":
     unittest.main()

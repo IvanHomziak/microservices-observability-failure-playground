@@ -299,3 +299,22 @@ Behavior details:
 - It is enforced only when JaCoCo reports branch counters for the changed class.
 - Classes with no branch counters (`missed=0`, `covered=0`) do not fail solely due to branch coverage.
 - Under strict PR policy, a branch-coverage threshold miss is a policy violation and fails the coverage check.
+
+
+## Related test heuristic
+
+The agent now performs deterministic, naming-based related test matching for each changed production Java class.
+
+It checks changed test files against expected candidates:
+- `<ClassName>Test.java`
+- `<ClassName>Tests.java`
+- `<ClassName>IT.java`
+- `<ClassName>IntegrationTest.java`
+
+Strict policy key:
+
+```yaml
+require_related_test_change_when_production_code_changes: true
+```
+
+This heuristic improves PR hygiene but does not prove semantic test quality. JaCoCo coverage evidence remains the stronger execution signal.

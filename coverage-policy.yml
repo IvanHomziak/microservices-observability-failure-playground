@@ -7,6 +7,7 @@ minimum_line_coverage_for_changed_classes: 70
 minimum_method_coverage_for_changed_classes: 70
 minimum_branch_coverage_for_changed_classes: 60
 require_test_changes_when_production_code_changes: true
+require_related_test_change_when_production_code_changes: false
 fail_on_unknown_coverage: false
 fail_on_missing_surefire_evidence: false
 fail_on_missing_jacoco_evidence: false

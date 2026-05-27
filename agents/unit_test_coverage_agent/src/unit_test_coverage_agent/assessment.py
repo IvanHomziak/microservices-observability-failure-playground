@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .models import ChangedClassCoverage, CoverageAssessment, CoveragePolicy, GitDiffEvidence, JacocoClassCoverage, JacocoEvidence, SurefireEvidence
 from .policy import DEFAULT_POLICY, evaluate_policy
+from .related_tests import build_related_test_evidence
 
 SCHEMA_VERSION = "1.0"
 SAFETY_BOUNDARY = (
@@ -113,11 +114,13 @@ def assess_coverage(
     test_files = [item.path for item in git.changed_files if item.category == "test-java"]
     changed_services = _unique([item.service for item in git.changed_files])
     changed_class_coverage = _changed_class_coverage(production_files, git, jacoco)
+    related_test_evidence = build_related_test_evidence(production_files, test_files)
 
     covered_classes = [item.expected_class_name for item in changed_class_coverage if item.status == "covered"]
     partially_covered_classes = [item.expected_class_name for item in changed_class_coverage if item.status == "partial"]
     uncovered_classes = [item.expected_class_name for item in changed_class_coverage if item.status == "uncovered"]
     unknown_files = [item.source_file for item in changed_class_coverage if item.status == "unknown"]
+    missing_related_test_files = [item.production_file for item in related_test_evidence if item.status == "missing"]
 
     missing_test_scenarios: list[str] = []
     recommended_tests: list[str] = []
@@ -126,6 +129,11 @@ def assess_coverage(
     if production_files and not test_files:
         missing_test_scenarios.append("Production Java files changed, but no Java test files changed in the diff.")
         recommended_tests.append("Add or update unit tests for changed production classes.")
+
+    for item in related_test_evidence:
+        if item.status == "missing":
+            missing_test_scenarios.append(f"Changed production class `{item.expected_class_name}` has no related changed test file.")
+            recommended_tests.append(f"Add or update a related test for `{item.expected_class_name}`.")
 
     if production_files and jacoco.reports_found == 0:
         missing_test_scenarios.append("No JaCoCo XML reports were found, so changed-code coverage is unknown.")
@@ -167,6 +175,7 @@ def assess_coverage(
         failed_test_suites=surefire.failed_suites,
         test_execution_failures=test_execution_failures,
         changed_class_coverage=changed_class_coverage,
+        related_test_evidence=related_test_evidence,
     )
     blocking_reasons.extend(policy_violations)
 
@@ -214,10 +223,12 @@ def assess_coverage(
         failed_test_suites=surefire.failed_suites,
         test_execution_failures=test_execution_failures,
         changed_class_coverage=changed_class_coverage,
+        related_test_evidence=related_test_evidence,
         covered_classes=tuple(covered_classes),
         partially_covered_classes=tuple(partially_covered_classes),
         uncovered_classes=tuple(uncovered_classes),
         unknown_coverage_files=tuple(unknown_files),
+        missing_related_test_files=tuple(missing_related_test_files),
         policy=policy,
         policy_violations=policy_violations,
         policy_warnings=policy_warnings,

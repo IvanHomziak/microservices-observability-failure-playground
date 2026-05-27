@@ -141,3 +141,22 @@ fail_on_unknown_coverage: true
 ```
 
 Only after this has proven reliable should branch protection or required checks be considered.
+
+
+## Related test heuristic
+
+The agent now performs deterministic, naming-based related test matching for each changed production Java class.
+
+It checks changed test files against expected candidates:
+- `<ClassName>Test.java`
+- `<ClassName>Tests.java`
+- `<ClassName>IT.java`
+- `<ClassName>IntegrationTest.java`
+
+Strict policy key:
+
+```yaml
+require_related_test_change_when_production_code_changes: true
+```
+
+This heuristic improves PR hygiene but does not prove semantic test quality. JaCoCo coverage evidence remains the stronger execution signal.

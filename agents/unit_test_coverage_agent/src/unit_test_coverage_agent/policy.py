@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .models import ChangedClassCoverage, CoveragePolicy, SurefireSuite
+from .models import ChangedClassCoverage, CoveragePolicy, RelatedTestEvidence, SurefireSuite
 
 DEFAULT_POLICY = CoveragePolicy(
     minimum_line_coverage_for_changed_classes=70.0,
     minimum_method_coverage_for_changed_classes=70.0,
     minimum_branch_coverage_for_changed_classes=60.0,
     require_test_changes_when_production_code_changes=True,
+    require_related_test_change_when_production_code_changes=False,
     fail_on_unknown_coverage=False,
     fail_on_missing_surefire_evidence=False,
     fail_on_missing_jacoco_evidence=False,
@@ -102,6 +103,13 @@ def load_policy(repository_root: Path, policy_path: Path | None = None) -> Cover
             ),
             field="require_test_changes_when_production_code_changes",
         ),
+        require_related_test_change_when_production_code_changes=_parse_bool(
+            raw.get(
+                "require_related_test_change_when_production_code_changes",
+                str(DEFAULT_POLICY.require_related_test_change_when_production_code_changes),
+            ),
+            field="require_related_test_change_when_production_code_changes",
+        ),
         fail_on_unknown_coverage=_parse_bool(
             raw.get("fail_on_unknown_coverage", str(DEFAULT_POLICY.fail_on_unknown_coverage)),
             field="fail_on_unknown_coverage",
@@ -146,12 +154,23 @@ def evaluate_policy(
     test_failure_count: int = 0,
     test_error_count: int = 0,
     failed_test_suites: tuple[SurefireSuite, ...] = (),
+    related_test_evidence: tuple[RelatedTestEvidence, ...] = (),
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     violations: list[str] = []
     warnings: list[str] = []
 
     if policy.require_test_changes_when_production_code_changes and production_files and not test_files:
         violations.append("Policy violation: production Java files changed, but no Java test files changed.")
+
+    if policy.require_related_test_change_when_production_code_changes:
+        for item in related_test_evidence:
+            if item.status != "missing":
+                continue
+            expected = ", ".join(f"`{path}`" for path in item.expected_test_files[:4])
+            message = f"Policy violation: changed production class `{item.expected_class_name}` has no related changed test file."
+            if expected:
+                message += f" Expected one of: {expected}."
+            violations.append(message)
 
     if policy.fail_on_missing_surefire_evidence and production_files and surefire_reports_found == 0:
         violations.append("Policy violation: Surefire XML evidence is required but was not found.")
