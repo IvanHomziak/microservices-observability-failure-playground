@@ -318,3 +318,20 @@ require_related_test_change_when_production_code_changes: true
 ```
 
 This heuristic improves PR hygiene but does not prove semantic test quality. JaCoCo coverage evidence remains the stronger execution signal.
+
+## Changed source to JaCoCo mapping behavior
+
+The changed-class mapper remains deterministic and read-only.
+
+Strategy order:
+
+1. `exact_class_name`
+2. `nested_top_level_class`
+3. `package_sourcefilename`
+4. `sourcefilename_service_scoped`
+5. `sourcefilename_unscoped` (only when unique)
+6. `unmatched`
+
+Exact class match is always preferred. If filename-based matches are ambiguous across classes/services, the result stays `unmatched` and coverage status remains `unknown` for safety.
+
+The Markdown report now includes `Mapping` and `Confidence` columns plus a `Coverage mapping details` section with candidate classes for debugging.

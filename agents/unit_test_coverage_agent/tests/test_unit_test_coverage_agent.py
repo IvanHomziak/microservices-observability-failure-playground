@@ -15,7 +15,7 @@ from unit_test_coverage_agent.assessment import assess_coverage
 from unit_test_coverage_agent.enforce_policy import enforce_policy
 from unit_test_coverage_agent.git_diff import classify_file
 from unit_test_coverage_agent.jacoco_loader import load_jacoco_evidence
-from unit_test_coverage_agent.models import CoveragePolicy, GitDiffEvidence
+from unit_test_coverage_agent.models import ChangedFile, CoveragePolicy, GitDiffEvidence
 from unit_test_coverage_agent.output_schema import assessment_to_contract, validate_contract
 from unit_test_coverage_agent.patch_proposal import build_patch_proposal, patch_proposal_to_dict, render_patch_proposal_markdown
 from unit_test_coverage_agent.policy import load_policy
@@ -194,9 +194,13 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
         self.assertEqual("manual_review", contract["merge_recommendation"])
         self.assertIn("com.example.OrderService", contract["partially_covered_classes"])
         self.assertEqual("partial", contract["changed_class_coverage"][0]["status"])
+        self.assertEqual("exact_class_name", contract["changed_class_coverage"][0]["mapping_strategy"])
+        self.assertEqual("high", contract["changed_class_coverage"][0]["mapping_confidence"])
         self.assertEqual(66.67, contract["changed_class_coverage"][0]["line_coverage_percent"])
         self.assertIn("cancelOrder()V", contract["changed_class_coverage"][0]["uncovered_methods"])
         self.assertIn("Changed class coverage", markdown)
+        self.assertIn("Coverage mapping details", markdown)
+        self.assertIn("Mapping | Confidence", markdown)
         self.assertIn("Coverage policy", markdown)
         self.assertIn("Policy violations", markdown)
         self.assertIn("cancelOrder()V", markdown)
@@ -229,6 +233,59 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
             self.assertEqual("approve", contract["merge_recommendation"])
             self.assertIn("com.example.OrderService", contract["covered_classes"])
             self.assertFalse(validate_contract(contract))
+
+    def test_nested_class_mapping_strategy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(
+                root / "orders-service" / "target" / "site" / "jacoco" / "jacoco.xml",
+                """<report name="orders-service"><package name="com/example"><class name="com/example/Foo$Inner" sourcefilename="Foo.java"><counter type="LINE" missed="0" covered="2"/><counter type="METHOD" missed="0" covered="1"/><counter type="BRANCH" missed="0" covered="0"/></class><sourcefile name="Foo.java"/></package></report>""",
+            )
+            git = GitDiffEvidence(
+                base_ref="origin/main",
+                head_ref="HEAD",
+                raw_changed_files=("orders-service/src/main/java/com/example/Foo.java",),
+                changed_files=(classify_file("orders-service/src/main/java/com/example/Foo.java"),),
+            )
+            from unit_test_coverage_agent.models import SurefireEvidence
+
+            contract = assessment_to_contract(assess_coverage(git, SurefireEvidence(1, (), total_tests=1), load_jacoco_evidence(root)))
+            row = contract["changed_class_coverage"][0]
+            self.assertEqual("com.example.Foo$Inner", row["matched_class_name"])
+            self.assertEqual("nested_top_level_class", row["mapping_strategy"])
+            self.assertIn(row["mapping_confidence"], {"high", "medium"})
+            self.assertNotEqual("unknown", row["status"])
+
+    def test_service_scoped_sourcefilename_mapping(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(root / "orders-service" / "target" / "site" / "jacoco" / "jacoco.xml", """<report><package name="a/b"><class name="a/b/OtherOrder" sourcefilename="Foo.java"><counter type="LINE" missed="0" covered="1"/><counter type="METHOD" missed="0" covered="1"/><counter type="BRANCH" missed="0" covered="0"/></class><sourcefile name="Foo.java"/></package></report>""")
+            write(root / "payments-service" / "target" / "site" / "jacoco" / "jacoco.xml", """<report><package name="x/y"><class name="x/y/OtherPayment" sourcefilename="Foo.java"><counter type="LINE" missed="0" covered="1"/><counter type="METHOD" missed="0" covered="1"/><counter type="BRANCH" missed="0" covered="0"/></class><sourcefile name="Foo.java"/></package></report>""")
+            git = GitDiffEvidence("origin/main", "HEAD", (classify_file("orders-service/src/main/java/com/example/Foo.java"),), ("orders-service/src/main/java/com/example/Foo.java",))
+            from unit_test_coverage_agent.models import SurefireEvidence
+            contract = assessment_to_contract(assess_coverage(git, SurefireEvidence(1, (), total_tests=1), load_jacoco_evidence(root)))
+            row = contract["changed_class_coverage"][0]
+            self.assertEqual("sourcefilename_service_scoped", row["mapping_strategy"])
+            self.assertEqual("a.b.OtherOrder", row["matched_class_name"])
+
+    def test_ambiguous_sourcefilename_unmatched(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(root / "orders-service" / "target" / "site" / "jacoco" / "jacoco.xml", """<report><package name="a/b"><class name="a/b/FooA" sourcefilename="Foo.java"><counter type="LINE" missed="0" covered="1"/><counter type="METHOD" missed="0" covered="1"/><counter type="BRANCH" missed="0" covered="0"/></class><sourcefile name="Foo.java"/></package></report>""")
+            write(root / "payments-service" / "target" / "site" / "jacoco" / "jacoco.xml", """<report><package name="c/d"><class name="c/d/FooB" sourcefilename="Foo.java"><counter type="LINE" missed="0" covered="1"/><counter type="METHOD" missed="0" covered="1"/><counter type="BRANCH" missed="0" covered="0"/></class><sourcefile name="Foo.java"/></package></report>""")
+            git = GitDiffEvidence(
+                "origin/main",
+                "HEAD",
+                (ChangedFile(path="src/main/java/com/example/Foo.java", category="production-java", service=None),),
+                ("src/main/java/com/example/Foo.java",),
+            )
+            from unit_test_coverage_agent.models import SurefireEvidence
+            contract = assessment_to_contract(assess_coverage(git, SurefireEvidence(1, (), total_tests=1), load_jacoco_evidence(root)))
+            row = contract["changed_class_coverage"][0]
+            self.assertEqual("unmatched", row["mapping_strategy"])
+            self.assertEqual("unknown", row["status"])
+            self.assertIn("a.b.FooA", row["mapping_candidates"])
+            self.assertIn("c.d.FooB", row["mapping_candidates"])
 
     def test_policy_loader_reads_simple_yaml_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

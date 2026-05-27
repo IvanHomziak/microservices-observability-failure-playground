@@ -45,8 +45,8 @@ def _append_changed_class_coverage(lines: list[str], payload: dict[str, Any]) ->
         lines.append("")
         return
 
-    lines.append("| Source file | Expected class | Status | Line % | Method % | Branch % | Uncovered methods |")
-    lines.append("|---|---|---:|---:|---:|---:|---|")
+    lines.append("| Source file | Expected class | Status | Line % | Method % | Branch % | Mapping | Confidence | Uncovered methods |")
+    lines.append("|---|---|---:|---:|---:|---:|---|---|---|")
     for row in rows:
         uncovered_methods = row.get("uncovered_methods") or []
         uncovered_text = ", ".join(f"`{method}`" for method in uncovered_methods) if uncovered_methods else "-"
@@ -58,9 +58,25 @@ def _append_changed_class_coverage(lines: list[str], payload: dict[str, Any]) ->
             f"{_format_percent(row.get('line_coverage_percent'))} | "
             f"{_format_percent(row.get('method_coverage_percent'))} | "
             f"{_format_percent(row.get('branch_coverage_percent'))} | "
+            f"`{row.get('mapping_strategy', 'unmatched')}` | "
+            f"`{row.get('mapping_confidence', 'low')}` | "
             f"{uncovered_text} |"
         )
     lines.append("")
+
+    lines.append("## Coverage mapping details")
+    lines.append("")
+    for row in rows:
+        candidates = row.get("mapping_candidates") or []
+        candidates_text = ", ".join(f"`{c}`" for c in candidates) if candidates else "-"
+        lines.append(f"### `{row.get('source_file', '')}`")
+        lines.append("")
+        lines.append(f"- Expected class: `{row.get('expected_class_name', '')}`")
+        lines.append(f"- Matched class: `{row.get('matched_class_name') or 'n/a'}`")
+        lines.append(f"- Mapping strategy: `{row.get('mapping_strategy', 'unmatched')}`")
+        lines.append(f"- Mapping confidence: `{row.get('mapping_confidence', 'low')}`")
+        lines.append(f"- Candidate classes: {candidates_text}")
+        lines.append("")
 
 
 

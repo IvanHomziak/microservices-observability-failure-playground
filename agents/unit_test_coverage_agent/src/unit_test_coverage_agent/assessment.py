@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from .models import ChangedClassCoverage, CoverageAssessment, CoveragePolicy, GitDiffEvidence, JacocoClassCoverage, JacocoEvidence, SurefireEvidence
 from .policy import DEFAULT_POLICY, evaluate_policy
 from .related_tests import build_related_test_evidence
@@ -59,25 +61,75 @@ def _uncovered_methods(coverage: JacocoClassCoverage) -> tuple[str, ...]:
     return tuple(methods)
 
 
-def _build_coverage_index(jacoco: JacocoEvidence) -> dict[str, JacocoClassCoverage]:
-    index: dict[str, JacocoClassCoverage] = {}
-    for item in jacoco.classes:
-        dotted = item.class_name.replace("/", ".")
-        index[dotted] = item
-        # Map nested classes to their top-level source file class when possible.
-        if "$" in dotted:
-            index.setdefault(dotted.split("$", 1)[0], item)
-    return index
+@dataclass(frozen=True)
+class CoverageMatch:
+    coverage: JacocoClassCoverage | None
+    strategy: str
+    confidence: str
+    candidates: tuple[str, ...]
+
+
+def _class_name(coverage: JacocoClassCoverage) -> str:
+    return coverage.class_name.replace("/", ".")
+
+
+def _candidate_names(items: list[JacocoClassCoverage]) -> tuple[str, ...]:
+    return tuple(sorted({_class_name(item) for item in items})[:10])
+
+
+def _service_from_path(path: str) -> str | None:
+    parts = path.split("/", 1)
+    return parts[0] if parts else None
+
+
+def _find_coverage_match(file_path: str, service: str | None, jacoco: JacocoEvidence) -> CoverageMatch:
+    expected_class_name = _java_class_name_from_path(file_path)
+    source_file_name = file_path.rsplit("/", 1)[-1]
+    expected_package = ".".join(expected_class_name.split(".")[:-1])
+    expected_package_slash = expected_package.replace(".", "/")
+    service_name = service or _service_from_path(file_path)
+
+    exact = [item for item in jacoco.classes if _class_name(item) == expected_class_name]
+    if len(exact) == 1:
+        return CoverageMatch(exact[0], "exact_class_name", "high", _candidate_names(exact))
+
+    nested = [item for item in jacoco.classes if _class_name(item).split("$", 1)[0] == expected_class_name and "$" in _class_name(item)]
+    if len(nested) == 1:
+        confidence = "high" if service_name and service_name in nested[0].file else "medium"
+        return CoverageMatch(nested[0], "nested_top_level_class", confidence, _candidate_names(nested))
+    if len(nested) > 1:
+        return CoverageMatch(None, "unmatched", "low", _candidate_names(nested))
+
+    pkg_source = [
+        item for item in jacoco.classes if (item.source_file == source_file_name and item.package == expected_package_slash)
+    ]
+    if len(pkg_source) == 1:
+        return CoverageMatch(pkg_source[0], "package_sourcefilename", "high", _candidate_names(pkg_source))
+    if len(pkg_source) > 1:
+        return CoverageMatch(None, "unmatched", "low", _candidate_names(pkg_source))
+
+    source_matches = [item for item in jacoco.classes if item.source_file == source_file_name]
+    if service_name:
+        service_scoped = [item for item in source_matches if service_name in item.file]
+        if len(service_scoped) == 1:
+            return CoverageMatch(service_scoped[0], "sourcefilename_service_scoped", "medium", _candidate_names(service_scoped))
+        if len(service_scoped) > 1:
+            return CoverageMatch(None, "unmatched", "low", _candidate_names(service_scoped))
+
+    if len(source_matches) == 1:
+        return CoverageMatch(source_matches[0], "sourcefilename_unscoped", "low", _candidate_names(source_matches))
+
+    return CoverageMatch(None, "unmatched", "low", _candidate_names(source_matches))
 
 
 def _changed_class_coverage(production_files: list[str], git: GitDiffEvidence, jacoco: JacocoEvidence) -> tuple[ChangedClassCoverage, ...]:
-    coverage_index = _build_coverage_index(jacoco)
     service_by_path = {item.path: item.service for item in git.changed_files}
     results: list[ChangedClassCoverage] = []
 
     for file_path in production_files:
         expected_class_name = _java_class_name_from_path(file_path)
-        coverage = coverage_index.get(expected_class_name)
+        match = _find_coverage_match(file_path, service_by_path.get(file_path), jacoco)
+        coverage = match.coverage
         status = _class_status(coverage)
         uncovered_methods = _uncovered_methods(coverage) if coverage else ()
 
@@ -96,6 +148,9 @@ def _changed_class_coverage(production_files: list[str], git: GitDiffEvidence, j
                 lines_missed=coverage.line_missed if coverage else 0,
                 methods_covered=coverage.method_covered if coverage else 0,
                 methods_missed=coverage.method_missed if coverage else 0,
+                mapping_strategy=match.strategy,
+                mapping_confidence=match.confidence,
+                mapping_candidates=match.candidates,
                 uncovered_methods=uncovered_methods,
             )
         )

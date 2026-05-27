@@ -91,6 +91,9 @@ class ChangedClassCoverage:
     lines_missed: int
     methods_covered: int
     methods_missed: int
+    mapping_strategy: str | None
+    mapping_confidence: str
+    mapping_candidates: tuple[str, ...]
     uncovered_methods: tuple[str, ...]
 
 

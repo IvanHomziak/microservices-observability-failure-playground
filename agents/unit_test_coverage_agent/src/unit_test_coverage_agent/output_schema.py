@@ -9,6 +9,15 @@ ALLOWED_COVERAGE_STATUS = {"sufficient", "insufficient", "partial", "unknown", "
 ALLOWED_CLASS_COVERAGE_STATUS = {"covered", "partial", "uncovered", "unknown"}
 ALLOWED_CONFIDENCE = {"low", "medium", "high"}
 ALLOWED_MERGE_RECOMMENDATION = {"approve", "block", "manual_review"}
+ALLOWED_MAPPING_STRATEGY = {
+    "exact_class_name",
+    "nested_top_level_class",
+    "package_sourcefilename",
+    "sourcefilename_service_scoped",
+    "sourcefilename_unscoped",
+    "unmatched",
+}
+ALLOWED_MAPPING_CONFIDENCE = {"high", "medium", "low"}
 
 REQUIRED_FIELDS: dict[str, type] = {
     "schema_version": str,
@@ -63,6 +72,9 @@ REQUIRED_CHANGED_CLASS_FIELDS: dict[str, type] = {
     "lines_missed": int,
     "methods_covered": int,
     "methods_missed": int,
+    "mapping_strategy": str,
+    "mapping_confidence": str,
+    "mapping_candidates": list,
     "uncovered_methods": list,
 }
 
@@ -178,6 +190,17 @@ def validate_contract(payload: dict[str, Any]) -> list[str]:
                 value = item.get(percent_field)
                 if value is not None and not isinstance(value, (int, float)):
                     errors.append(f"Invalid changed_class_coverage[{index}].{percent_field}: expected number or null")
+            mapping_strategy = item.get("mapping_strategy")
+            if isinstance(mapping_strategy, str) and mapping_strategy not in ALLOWED_MAPPING_STRATEGY:
+                errors.append(f"Invalid changed_class_coverage[{index}].mapping_strategy: {mapping_strategy}")
+            mapping_confidence = item.get("mapping_confidence")
+            if isinstance(mapping_confidence, str) and mapping_confidence not in ALLOWED_MAPPING_CONFIDENCE:
+                errors.append(f"Invalid changed_class_coverage[{index}].mapping_confidence: {mapping_confidence}")
+            candidates = item.get("mapping_candidates")
+            if isinstance(candidates, list):
+                for j, candidate in enumerate(candidates):
+                    if not isinstance(candidate, str):
+                        errors.append(f"Invalid changed_class_coverage[{index}].mapping_candidates[{j}]: expected string")
 
     boundary = payload.get("safety_boundary")
     if isinstance(boundary, str) and "does not authorize code mutation" not in boundary:
