@@ -100,11 +100,23 @@ class CoveragePolicy:
     minimum_method_coverage_for_changed_classes: float
     minimum_branch_coverage_for_changed_classes: float
     require_test_changes_when_production_code_changes: bool
+    require_related_test_change_when_production_code_changes: bool
     fail_on_unknown_coverage: bool
     fail_on_missing_surefire_evidence: bool
     fail_on_missing_jacoco_evidence: bool
     fail_on_maven_verification_failure: bool
     fail_on_test_failures: bool
+
+
+
+
+@dataclass(frozen=True)
+class RelatedTestEvidence:
+    production_file: str
+    expected_class_name: str
+    expected_test_files: tuple[str, ...]
+    matched_test_files: tuple[str, ...]
+    status: str
 
 
 @dataclass(frozen=True)
@@ -123,10 +135,12 @@ class CoverageAssessment:
     failed_test_suites: tuple[SurefireSuite, ...]
     test_execution_failures: tuple[str, ...]
     changed_class_coverage: tuple[ChangedClassCoverage, ...]
+    related_test_evidence: tuple[RelatedTestEvidence, ...]
     covered_classes: tuple[str, ...]
     partially_covered_classes: tuple[str, ...]
     uncovered_classes: tuple[str, ...]
     unknown_coverage_files: tuple[str, ...]
+    missing_related_test_files: tuple[str, ...]
     policy: CoveragePolicy
     policy_violations: tuple[str, ...]
     policy_warnings: tuple[str, ...]

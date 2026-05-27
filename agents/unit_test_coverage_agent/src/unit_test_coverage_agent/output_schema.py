@@ -25,10 +25,12 @@ REQUIRED_FIELDS: dict[str, type] = {
     "failed_test_suites": list,
     "test_execution_failures": list,
     "changed_class_coverage": list,
+    "related_test_evidence": list,
     "covered_classes": list,
     "partially_covered_classes": list,
     "uncovered_classes": list,
     "unknown_coverage_files": list,
+    "missing_related_test_files": list,
     "policy": dict,
     "policy_violations": list,
     "policy_warnings": list,
@@ -45,6 +47,7 @@ REQUIRED_POLICY_FIELDS: dict[str, type] = {
     "minimum_method_coverage_for_changed_classes": (int, float),
     "minimum_branch_coverage_for_changed_classes": (int, float),
     "require_test_changes_when_production_code_changes": bool,
+    "require_related_test_change_when_production_code_changes": bool,
     "fail_on_unknown_coverage": bool,
     "fail_on_missing_surefire_evidence": bool,
     "fail_on_missing_jacoco_evidence": bool,
@@ -132,6 +135,28 @@ def validate_contract(payload: dict[str, Any]) -> list[str]:
                 if not isinstance(item[field], expected_type):
                     errors.append(f"Invalid type for failed_test_suites[{index}].{field}: expected {expected_type.__name__}")
 
+    related_test_evidence = payload.get("related_test_evidence")
+    if isinstance(related_test_evidence, list):
+        for index, item in enumerate(related_test_evidence):
+            if not isinstance(item, dict):
+                errors.append(f"Invalid related_test_evidence[{index}]: expected object")
+                continue
+            for field, expected_type in REQUIRED_RELATED_TEST_FIELDS.items():
+                if field not in item:
+                    errors.append(f"Missing related_test_evidence[{index}].{field}")
+                    continue
+                if not isinstance(item[field], expected_type):
+                    errors.append(f"Invalid type for related_test_evidence[{index}].{field}: expected {expected_type.__name__}")
+            status = item.get("status")
+            if isinstance(status, str) and status not in ALLOWED_RELATED_TEST_STATUS:
+                errors.append(f"Invalid related_test_evidence[{index}].status: {status}")
+            for list_field in ("expected_test_files", "matched_test_files"):
+                lst = item.get(list_field)
+                if isinstance(lst, list):
+                    for j, value in enumerate(lst):
+                        if not isinstance(value, str):
+                            errors.append(f"Invalid related_test_evidence[{index}].{list_field}[{j}]: expected string")
+
     changed_class_coverage = payload.get("changed_class_coverage")
     if isinstance(changed_class_coverage, list):
         for index, item in enumerate(changed_class_coverage):
@@ -172,3 +197,13 @@ REQUIRED_FAILED_SUITE_FIELDS: dict[str, type] = {
     "errors": int,
     "skipped": int,
 }
+
+
+REQUIRED_RELATED_TEST_FIELDS: dict[str, type] = {
+    "production_file": str,
+    "expected_class_name": str,
+    "expected_test_files": list,
+    "matched_test_files": list,
+    "status": str,
+}
+ALLOWED_RELATED_TEST_STATUS = {"matched", "missing", "not_applicable"}

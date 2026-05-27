@@ -63,6 +63,25 @@ def _append_changed_class_coverage(lines: list[str], payload: dict[str, Any]) ->
     lines.append("")
 
 
+
+
+def _append_related_test_evidence(lines: list[str], payload: dict[str, Any]) -> None:
+    lines.append("## Related test evidence")
+    lines.append("")
+    rows = payload.get("related_test_evidence", [])
+    if not rows:
+        lines.append("No changed production classes require related test evidence.")
+        lines.append("")
+        return
+
+    lines.append("| Production file | Expected class | Status | Matched test files |")
+    lines.append("|---|---|---:|---|")
+    for row in rows:
+        matched = row.get("matched_test_files") or []
+        matched_text = ", ".join(f"`{item}`" for item in matched) if matched else "-"
+        lines.append(f"| `{row.get('production_file', '')}` | `{row.get('expected_class_name', '')}` | `{row.get('status', '')}` | {matched_text} |")
+    lines.append("")
+
 def _append_failed_test_suites(lines: list[str], payload: dict[str, Any]) -> None:
     lines.append("## Failed test suites")
     lines.append("")
@@ -108,10 +127,12 @@ def render_markdown(payload: dict[str, Any]) -> str:
     _append_list(lines, "Changed test files", payload["changed_test_files"])
     _append_failed_test_suites(lines, payload)
     _append_changed_class_coverage(lines, payload)
+    _append_related_test_evidence(lines, payload)
     _append_list(lines, "Covered classes", payload["covered_classes"])
     _append_list(lines, "Partially covered classes", payload["partially_covered_classes"])
     _append_list(lines, "Uncovered classes", payload["uncovered_classes"])
     _append_list(lines, "Unknown coverage files", payload["unknown_coverage_files"])
+    _append_list(lines, "Missing related test files", payload.get("missing_related_test_files", []))
     _append_list(lines, "Policy violations", payload.get("policy_violations", []))
     _append_list(lines, "Policy warnings", payload.get("policy_warnings", []))
     _append_list(lines, "Test execution failures", payload.get("test_execution_failures", []))
