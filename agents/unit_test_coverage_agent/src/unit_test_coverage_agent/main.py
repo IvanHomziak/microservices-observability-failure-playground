@@ -86,6 +86,8 @@ def main() -> int:
     print(f"Provider: {provider_result.provider_name}")
     print(f"External call used: {provider_result.used_external_call}")
     print(f"Model: {provider_result.model or 'none'}")
+    for warning in provider_result.warnings:
+        print(f"Provider warning: {warning}")
     print(f"Coverage status: {contract['coverage_status']}")
     print(f"Merge recommendation: {contract['merge_recommendation']}")
     print(f"Policy violations: {len(contract.get('policy_violations', []))}")

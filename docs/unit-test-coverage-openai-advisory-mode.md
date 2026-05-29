@@ -37,6 +37,8 @@ The optional OpenAI advisory layer reads validated deterministic JSON artifacts 
 
 It does **not** decide green/red. It must not override deterministic evidence, mutate code, create PRs, deploy, or change branch protection.
 
+If the OpenAI/LangChain response is missing, incomplete, non-JSON, invalid, or attempts to modify deterministic policy facts, the manual advisory provider falls back to the deterministic coverage contract and prints a provider warning. This fallback preserves artifact generation. A missing `OPENAI_API_KEY` still fails clearly because that is a configuration error, not an advisory-model quality issue.
+
 ## Workflows and OpenAI usage matrix
 
 | Workflow | File | OpenAI allowed? | Why |
@@ -106,6 +108,7 @@ Expected result:
 
 - deterministic report generated;
 - optional LLM-refined explanation when `OPENAI_API_KEY` is configured;
+- deterministic fallback with provider warning if LLM output is invalid;
 - coverage artifacts uploaded.
 
 ### Deterministic mode
@@ -244,7 +247,11 @@ Treat this as an advisory-layer failure, not a deterministic coverage result. Re
 
 ### Invalid LLM response
 
-The model response must validate before it is rendered. Invalid advisory output must not change deterministic fields. Use deterministic mode or rerun the manual workflow after checking the model input.
+The model response must validate before it is rendered. Invalid advisory output must not change deterministic fields. In the manual `provider=langchain-openai` workflow, invalid LLM output falls back to the deterministic coverage contract and emits a provider warning such as:
+
+```text
+Provider warning: LLM advisory refinement unavailable; deterministic coverage contract was used.
+```
 
 ### Deterministic fallback
 
