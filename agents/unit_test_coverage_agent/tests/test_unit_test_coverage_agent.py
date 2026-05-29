@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -11,18 +12,21 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE_ROOT / "src"))
 
 from unit_test_coverage_agent.affected_services import detect_affected_services
+from unit_test_coverage_agent import detect_affected_services_cli
 from unit_test_coverage_agent.assessment import assess_coverage
 from unit_test_coverage_agent.enforce_policy import enforce_policy
 from unit_test_coverage_agent.git_diff import classify_file
 from unit_test_coverage_agent.jacoco_loader import load_jacoco_evidence
+from unit_test_coverage_agent.main import load_test_execution_failures
 from unit_test_coverage_agent.models import ChangedFile, CoveragePolicy, GitDiffEvidence
 from unit_test_coverage_agent.output_schema import assessment_to_contract, validate_contract
 from unit_test_coverage_agent.patch_proposal import build_patch_proposal, patch_proposal_to_dict, render_patch_proposal_markdown
 from unit_test_coverage_agent.policy import load_policy
-from unit_test_coverage_agent.pr_comment import COMMENT_MARKER, render_pr_comment
+from unit_test_coverage_agent import pr_comment as pr_comment_module
+from unit_test_coverage_agent.pr_comment import COMMENT_MARKER, MissingOpenAIAPIKeyError, render_pr_comment
 from unit_test_coverage_agent.pr_summary_comment import _truncate_markdown, render_pr_summary_comment
 from unit_test_coverage_agent.prompt_builder import build_coverage_reasoning_prompt
-from unit_test_coverage_agent.providers import get_provider
+from unit_test_coverage_agent.providers import LangChainOpenAICoverageProvider, get_provider
 from unit_test_coverage_agent.renderer import render_markdown
 from unit_test_coverage_agent.related_tests import build_related_test_evidence
 from unit_test_coverage_agent.surefire_loader import load_surefire_evidence
@@ -79,6 +83,22 @@ def build_partial_contract() -> dict:
 
 
 class TestUnitTestCoverageAgent(unittest.TestCase):
+
+    def test_load_test_execution_failures_reads_newline_delimited_services(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            failures_file = Path(temp_dir) / "maven-failed-services.txt"
+            failures_file.write_text("orders-service\n\npayments-service\norders-service\n", encoding="utf-8")
+
+            failures = load_test_execution_failures(failures_file)
+
+            self.assertEqual(("orders-service", "payments-service"), failures)
+
+    def test_load_test_execution_failures_missing_file_is_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            failures = load_test_execution_failures(Path(temp_dir) / "missing-maven-failed-services.txt")
+
+            self.assertEqual((), failures)
+
     def test_classify_changed_files(self) -> None:
         self.assertEqual("production-java", classify_file("orders-service/src/main/java/com/example/OrderService.java").category)
         self.assertEqual("test-java", classify_file("orders-service/src/test/java/com/example/OrderServiceTest.java").category)
@@ -129,6 +149,51 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
                 ("api-gateway", "audit-service", "inventory-service", "notification-service", "orders-service", "payments-service"),
                 detect_affected_services(git),
             )
+
+
+    def test_detect_affected_services_deleted_production_file_returns_service(self) -> None:
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=("orders-service/src/main/java/com/example/DeletedFeature.java",),
+            changed_files=(
+                classify_file(
+                    "orders-service/src/main/java/com/example/DeletedFeature.java",
+                    change_status="deleted",
+                ),
+            ),
+        )
+        self.assertEqual(("orders-service",), detect_affected_services(git))
+
+    def test_detect_affected_services_cli_writes_changed_and_affected_outputs(self) -> None:
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=("orders-service/src/main/java/com/example/OrderService.java",),
+            changed_files=(classify_file("orders-service/src/main/java/com/example/OrderService.java"),),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            changed_output = root / "coverage-agent" / "raw" / "changed-files.txt"
+            affected_output = root / "coverage-agent" / "raw" / "affected-services.txt"
+            argv = [
+                "detect_affected_services_cli",
+                "--repository-root",
+                str(root),
+                "--base-ref",
+                "origin/main",
+                "--head-ref",
+                "HEAD",
+                "--changed-files-output",
+                str(changed_output),
+                "--affected-services-output",
+                str(affected_output),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(detect_affected_services_cli, "load_changed_files", return_value=git):
+                self.assertEqual(0, detect_affected_services_cli.main())
+
+            self.assertEqual("orders-service/src/main/java/com/example/OrderService.java\n", changed_output.read_text(encoding="utf-8"))
+            self.assertEqual("orders-service\n", affected_output.read_text(encoding="utf-8"))
 
     def test_load_surefire_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -431,6 +496,42 @@ fail_on_test_failures: true
             self.assertTrue(policy.fail_on_maven_verification_failure)
             self.assertTrue(policy.fail_on_test_failures)
 
+    def test_repository_advisory_policy_keeps_strict_failure_flags_false(self) -> None:
+        repository_root = Path(__file__).resolve().parents[3]
+
+        policy = load_policy(repository_root, repository_root / "coverage-policy.yml")
+
+        self.assertFalse(policy.fail_on_unknown_coverage)
+        self.assertFalse(policy.fail_on_missing_surefire_evidence)
+        self.assertFalse(policy.fail_on_missing_jacoco_evidence)
+        self.assertFalse(policy.fail_on_maven_verification_failure)
+        self.assertFalse(policy.require_related_test_change_when_production_code_changes)
+
+    def test_repository_strict_pr_policy_sets_strict_failure_flags_true(self) -> None:
+        repository_root = Path(__file__).resolve().parents[3]
+
+        policy = load_policy(repository_root, repository_root / "coverage-policy-pr.yml")
+
+        self.assertTrue(policy.fail_on_unknown_coverage)
+        self.assertTrue(policy.fail_on_missing_surefire_evidence)
+        self.assertTrue(policy.fail_on_missing_jacoco_evidence)
+        self.assertTrue(policy.fail_on_maven_verification_failure)
+        self.assertTrue(policy.require_related_test_change_when_production_code_changes)
+
+    def test_policy_loader_fails_on_unknown_policy_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            policy_path = root / "coverage-policy.yml"
+            write(
+                policy_path,
+                """minimum_line_coverage_for_changed_classes: 80
+unknown_policy_key: true
+""",
+            )
+
+            with self.assertRaisesRegex(ValueError, "Unknown coverage policy keys: unknown_policy_key"):
+                load_policy(root)
+
     def test_policy_loader_fails_when_explicit_policy_path_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -462,8 +563,10 @@ fail_on_test_failures: true
         prompt = build_coverage_reasoning_prompt(contract)
 
         self.assertIn("Reason only from the deterministic coverage evidence", prompt)
-        self.assertIn("Do not invent files, classes, methods, tests, coverage percentages, or validation results", prompt)
-        self.assertIn("Return only JSON", prompt)
+        self.assertIn("Do not invent files, classes, methods, tests, coverage percentages", prompt)
+        self.assertIn("Return JSON only", prompt)
+        self.assertIn("Pass/fail authority belongs only to deterministic policy evaluation", prompt)
+        self.assertIn("Do not change coverage_status, merge_recommendation, policy_violations, or policy_warnings", prompt)
         self.assertIn("cancelOrder", prompt)
         self.assertIn("policy_violations", prompt)
 
@@ -471,9 +574,11 @@ fail_on_test_failures: true
         contract = build_partial_contract()
         provider = get_provider("deterministic")
 
-        result = provider.refine(contract)
+        with patch.dict(os.environ, {}, clear=True):
+            result = provider.refine(contract)
 
         self.assertEqual("deterministic", result.provider_name)
+        self.assertIsNone(result.model)
         self.assertFalse(result.used_external_call)
         self.assertFalse(validate_contract(result.contract))
 
@@ -481,9 +586,89 @@ fail_on_test_failures: true
         contract = build_partial_contract()
         provider = get_provider("langchain-openai")
 
-        with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises(RuntimeError):
+        with patch.dict(os.environ, {"OPENAI_MODEL": "gpt-test", "SECRET_VALUE": "must-not-leak"}, clear=True):
+            with self.assertRaises(RuntimeError) as context:
                 provider.refine(contract)
+
+        message = str(context.exception)
+        self.assertIn("OPENAI_API_KEY is required for provider=langchain-openai", message)
+        self.assertNotIn("must-not-leak", message)
+        self.assertNotIn("SECRET_VALUE", message)
+
+    def test_invalid_provider_name_fails_clearly(self) -> None:
+        with self.assertRaises(ValueError) as context:
+            get_provider("unsupported-provider")
+
+        self.assertIn("Unsupported coverage reasoning provider", str(context.exception))
+
+    def test_langchain_provider_uses_openai_model_override_without_startup_validation(self) -> None:
+        with patch.dict(os.environ, {"OPENAI_MODEL": "gpt-custom-model"}, clear=True):
+            provider = get_provider("langchain-openai")
+
+        self.assertIsInstance(provider, LangChainOpenAICoverageProvider)
+        self.assertEqual("gpt-custom-model", provider.model)
+
+    def test_langchain_provider_rejects_invalid_llm_json_response(self) -> None:
+        contract = build_partial_contract()
+        provider = LangChainOpenAICoverageProvider(model="gpt-test")
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+            with patch.object(provider, "_invoke", return_value=json.dumps({"coverage_status": "approve everything"})):
+                with self.assertRaises(RuntimeError) as context:
+                    provider.refine(contract)
+
+        message = str(context.exception)
+        self.assertIn("LangChain provider returned invalid coverage contract", message)
+        self.assertIn("Missing required field", message)
+        self.assertNotIn("test-key", message)
+
+    def test_langchain_provider_rejects_authoritative_policy_changes(self) -> None:
+        contract = build_partial_contract()
+        modified = dict(contract)
+        modified["policy_violations"] = []
+        provider = LangChainOpenAICoverageProvider(model="gpt-test")
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+            with patch.object(provider, "_invoke", return_value=json.dumps(modified)):
+                with self.assertRaises(RuntimeError) as context:
+                    provider.refine(contract)
+
+        self.assertIn("policy_violations must remain deterministic", str(context.exception))
+
+    def test_langchain_provider_merges_only_advisory_fields(self) -> None:
+        contract = build_partial_contract()
+        modified = dict(contract)
+        modified["recommended_tests"] = ["Add focused assertions for cancelOrder error handling."]
+        provider = LangChainOpenAICoverageProvider(model="gpt-test")
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+            with patch.object(provider, "_invoke", return_value=json.dumps(modified)):
+                result = provider.refine(contract)
+
+        self.assertTrue(result.used_external_call)
+        self.assertEqual("langchain-openai", result.provider_name)
+        self.assertEqual("gpt-test", result.model)
+        self.assertEqual(contract["coverage_status"], result.contract["coverage_status"])
+        self.assertEqual(contract["merge_recommendation"], result.contract["merge_recommendation"])
+        self.assertEqual(contract["policy_violations"], result.contract["policy_violations"])
+        self.assertEqual(["Add focused assertions for cancelOrder error handling."], result.contract["recommended_tests"])
+        self.assertFalse(validate_contract(result.contract))
+
+    def test_output_schema_rejects_invalid_authoritative_fields_and_safety_boundary(self) -> None:
+        contract = build_partial_contract()
+        contract["coverage_status"] = "green"
+        contract["merge_recommendation"] = "merge_now"
+        contract["policy_violations"] = "none"
+        contract["policy_warnings"] = "none"
+        contract["safety_boundary"] = "advisory report"
+
+        errors = validate_contract(contract)
+
+        self.assertTrue(any("Invalid coverage_status" in error for error in errors))
+        self.assertTrue(any("Invalid merge_recommendation" in error for error in errors))
+        self.assertTrue(any("Invalid type for policy_violations" in error for error in errors))
+        self.assertTrue(any("Invalid type for policy_warnings" in error for error in errors))
+        self.assertTrue(any("safety_boundary" in error for error in errors))
 
     def test_patch_proposal_generated_for_partial_coverage(self) -> None:
         contract = build_partial_contract()
@@ -516,6 +701,139 @@ fail_on_test_failures: true
         self.assertIn("does not authorize code mutation", comment)
 
 
+
+    def test_pr_comment_deterministic_comment_preserves_policy_and_class_coverage_without_openai(self) -> None:
+        contract = build_partial_contract()
+        proposal = patch_proposal_to_dict(build_patch_proposal(contract))
+
+        with patch.dict(os.environ, {}, clear=True):
+            comment = render_pr_comment(contract, proposal)
+
+        self.assertIn(COMMENT_MARKER, comment)
+        self.assertIn("**Status:** `policy_violation`", comment)
+        self.assertIn("Policy violations", comment)
+        self.assertIn("Changed class coverage", comment)
+        self.assertIn("com.example.OrderService", comment)
+        self.assertIn("66.67", comment)
+        self.assertNotIn("OpenAI-enhanced advisory summary", comment)
+
+    def test_pr_comment_llm_summary_disabled_matches_deterministic_comment(self) -> None:
+        contract = build_partial_contract()
+        proposal = patch_proposal_to_dict(build_patch_proposal(contract))
+
+        deterministic = render_pr_comment(contract, proposal)
+        disabled = render_pr_comment(contract, proposal, llm_summary=None)
+
+        self.assertEqual(deterministic, disabled)
+
+    def test_pr_comment_llm_summary_enabled_requires_openai_key_without_leaking_environment(self) -> None:
+        contract = build_partial_contract()
+        proposal = patch_proposal_to_dict(build_patch_proposal(contract))
+
+        with patch.dict(os.environ, {"SECRET_VALUE": "must-not-leak"}, clear=True):
+            with self.assertRaises(MissingOpenAIAPIKeyError) as context:
+                pr_comment_module.generate_llm_summary(contract, proposal, None, "gpt-test")
+
+        message = str(context.exception)
+        self.assertIn("OPENAI_API_KEY repository secret is required when use_llm_summary=true", message)
+        self.assertNotIn("must-not-leak", message)
+        self.assertNotIn("SECRET_VALUE", message)
+
+    def test_pr_comment_llm_summary_cannot_override_deterministic_policy_facts(self) -> None:
+        contract = build_partial_contract()
+        proposal = patch_proposal_to_dict(build_patch_proposal(contract))
+        summary = pr_comment_module.validate_llm_summary(
+            {
+                "executive_summary": "Review the deterministic policy findings before merging.",
+                "reviewer_guidance": ["Focus on the uncovered changed class shown in the deterministic table."],
+                "developer_next_steps": ["Add tests for the listed uncovered method and rerun Maven verification."],
+                "risk_assessment": "high",
+                "limitations": ["This advisory text is limited to the provided artifacts."],
+            }
+        )
+
+        comment = render_pr_comment(contract, proposal, llm_summary=summary)
+
+        self.assertIn("OpenAI-enhanced advisory summary", comment)
+        self.assertIn("**Status:** `policy_violation`", comment)
+        self.assertIn("**Recommendation:** `manual_review`", comment)
+        self.assertIn("Policy violations", comment)
+        self.assertIn("com.example.OrderService", comment)
+        self.assertIn("This advisory section cannot override", comment)
+
+    def test_pr_comment_llm_response_with_authoritative_field_is_rejected(self) -> None:
+        with self.assertRaises(pr_comment_module.InvalidLLMCommentSummaryError) as context:
+            pr_comment_module.validate_llm_summary(
+                {
+                    "executive_summary": "Looks ready.",
+                    "reviewer_guidance": ["Merge."],
+                    "developer_next_steps": ["None."],
+                    "risk_assessment": "low",
+                    "limitations": ["None."],
+                    "coverage_status": "sufficient",
+                }
+            )
+
+        self.assertIn("unexpected fields: coverage_status", str(context.exception))
+
+    def test_pr_comment_invalid_llm_response_falls_back_to_deterministic_comment_with_note(self) -> None:
+        contract = build_partial_contract()
+        proposal = patch_proposal_to_dict(build_patch_proposal(contract))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            coverage_json = root / "unit-test-coverage-report.json"
+            patch_json = root / "unit-test-coverage-patch-proposal.json"
+            coverage_md = root / "unit-test-coverage-report.md"
+            patch_md = root / "unit-test-coverage-patch-proposal.md"
+            output = root / "pr-comment.md"
+            llm_output = root / "llm-pr-comment-summary.json"
+            coverage_json.write_text(json.dumps(contract), encoding="utf-8")
+            patch_json.write_text(json.dumps(proposal), encoding="utf-8")
+            coverage_md.write_text("# deterministic report", encoding="utf-8")
+            patch_md.write_text("# deterministic patch proposal", encoding="utf-8")
+
+            argv = [
+                "pr_comment",
+                "--coverage-json",
+                str(coverage_json),
+                "--patch-proposal-json",
+                str(patch_json),
+                "--coverage-md",
+                str(coverage_md),
+                "--patch-proposal-md",
+                str(patch_md),
+                "--output",
+                str(output),
+                "--use-llm-summary",
+                "--model",
+                "gpt-test",
+                "--llm-summary-output",
+                str(llm_output),
+            ]
+            with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+                with patch.object(pr_comment_module, "_invoke_openai_summary", return_value="not json"):
+                    with patch.object(sys, "argv", argv):
+                        self.assertEqual(0, pr_comment_module.main())
+
+            comment = output.read_text(encoding="utf-8")
+            llm_artifact = json.loads(llm_output.read_text(encoding="utf-8"))
+
+        self.assertIn(COMMENT_MARKER, comment)
+        self.assertIn("**Status:** `policy_violation`", comment)
+        self.assertIn("LLM summary unavailable due to invalid response.", comment)
+        self.assertFalse(llm_artifact["summary_available"])
+        self.assertIsNone(llm_artifact["summary"])
+
+    def test_workflow_comment_logic_preserves_marker_and_patches_existing_comment(self) -> None:
+        workflow = (PACKAGE_ROOT.parents[1] / ".github" / "workflows" / "unit-test-coverage-pr-comment.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('COMMENT_MARKER: "<!-- unit-test-coverage-agent-comment -->"', workflow)
+        self.assertIn("contains(env.COMMENT_MARKER)", workflow)
+        self.assertIn("--method PATCH", workflow)
+        self.assertIn("gh pr comment", workflow)
+
     def test_assessment_maven_failure_can_be_policy_violation(self) -> None:
         git = GitDiffEvidence(
             base_ref="origin/main",
@@ -546,6 +864,7 @@ fail_on_test_failures: true
         )
         contract = assessment_to_contract(assessment)
 
+        self.assertEqual(("orders-service",), assessment.test_execution_failures)
         self.assertIn("orders-service", contract["test_execution_failures"])
         self.assertTrue(any("Maven verification failed for `orders-service`" in x for x in contract["policy_violations"]))
 
@@ -685,6 +1004,14 @@ fail_on_test_failures: true
         self.assertIn("## Test execution failures", markdown)
         self.assertIn("## Failed test suites", markdown)
         self.assertIn("orders-service", markdown)
+
+    def test_output_schema_accepts_non_empty_test_execution_failures(self) -> None:
+        contract = build_partial_contract()
+        contract["test_execution_failures"] = ["orders-service", "payments-service"]
+
+        errors = validate_contract(contract)
+
+        self.assertFalse(errors)
 
     def test_output_schema_validates_test_execution_failures(self) -> None:
         contract = build_partial_contract()

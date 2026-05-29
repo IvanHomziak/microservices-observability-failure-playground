@@ -18,6 +18,14 @@ on:
         required: true
         default: false
         type: boolean
+      policy_file:
+        description: "Coverage policy file to use"
+        required: true
+        default: "coverage-policy.yml"
+        type: choice
+        options:
+          - coverage-policy.yml
+          - coverage-policy-pr.yml
       provider:
         description: "Coverage reasoning provider"
         required: true
@@ -52,6 +60,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -73,65 +88,81 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install ./agents/unit_test_coverage_agent
 
-      - name: Optionally run Maven tests and JaCoCo reports
+      - name: Detect changed files and affected services
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p coverage-agent/raw
+          PYTHONPATH="agents/unit_test_coverage_agent/src" \
+            python -m unit_test_coverage_agent.detect_affected_services_cli \
+              --repository-root . \
+              --base-ref "${{ inputs.base_ref }}" \
+              --head-ref "${{ inputs.head_ref }}" \
+              --changed-files-output coverage-agent/raw/changed-files.txt \
+              --affected-services-output coverage-agent/raw/affected-services.txt
+
+      - name: Optionally run Maven tests and JaCoCo reports for affected services
         if: ${{ inputs.run_tests }}
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p coverage-agent/raw
+          : > coverage-agent/raw/maven-failed-services.txt
 
-          services=(
-            api-gateway
-            orders-service
-            payments-service
-            inventory-service
-            notification-service
-            audit-service
-          )
+          if [ ! -s coverage-agent/raw/affected-services.txt ]; then
+            echo "No affected services detected; skipping Maven verification."
+            exit 0
+          fi
 
-          failed_services=()
-
-          for service in "${services[@]}"; do
+          while IFS= read -r service; do
+            [ -n "$service" ] || continue
             if [ -f "$service/pom.xml" ]; then
               echo "Running Maven verify for $service to generate Surefire and JaCoCo evidence"
               if ! (cd "$service" && mvn -B -ntp verify); then
                 echo "Maven verify failed for $service; continuing to collect available evidence"
-                failed_services+=("$service")
+                echo "$service" >> coverage-agent/raw/maven-failed-services.txt
               fi
+            else
+              echo "Affected service $service has no pom.xml; skipping Maven verification for it"
             fi
-          done
-
-          if [ ${#failed_services[@]} -gt 0 ]; then
-            printf '%s\n' "${failed_services[@]}" > coverage-agent-maven-failed-services.txt
-          fi
+          done < coverage-agent/raw/affected-services.txt
 
       - name: Generate coverage report
         shell: bash
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ inputs.model }}
+          POLICY_FILE: ${{ inputs.policy_file }}
         run: |
           set -euo pipefail
           mkdir -p coverage-agent/output coverage-agent/raw
+
+          if [ ! -f "${POLICY_FILE}" ]; then
+            echo "Coverage policy file does not exist: ${POLICY_FILE}"
+            exit 1
+          fi
+
+          if [ "${{ inputs.provider }}" = "langchain-openai" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "OPENAI_API_KEY repository secret is required for provider=langchain-openai"
+            exit 1
+          fi
 
           PYTHONPATH="agents/unit_test_coverage_agent/src" \
             python -m unit_test_coverage_agent.main \
               --repository-root . \
               --base-ref "${{ inputs.base_ref }}" \
               --head-ref "${{ inputs.head_ref }}" \
+              --policy "${POLICY_FILE}" \
               --provider "${{ inputs.provider }}" \
               --output coverage-agent/output/unit-test-coverage-report.md \
               --json-output coverage-agent/output/unit-test-coverage-report.json \
               --prompt-output coverage-agent/output/coverage-reasoning-prompt.md \
               --patch-proposal-output coverage-agent/output/unit-test-coverage-patch-proposal.md \
-              --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json
+              --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json \
+              --test-execution-failures-file coverage-agent/raw/maven-failed-services.txt
 
-          git diff --name-only "${{ inputs.base_ref }}...${{ inputs.head_ref }}" > coverage-agent/raw/changed-files.txt
           find . -path "*/target/surefire-reports/TEST-*.xml" -type f -print > coverage-agent/raw/surefire-files.txt || true
           find . -path "*/target/site/jacoco/jacoco.xml" -type f -print > coverage-agent/raw/jacoco-files.txt || true
-          if [ -f coverage-agent-maven-failed-services.txt ]; then
-            cp coverage-agent-maven-failed-services.txt coverage-agent/raw/maven-failed-services.txt
-          fi
-
           cat coverage-agent/output/unit-test-coverage-report.md
           cat coverage-agent/output/unit-test-coverage-patch-proposal.md
 

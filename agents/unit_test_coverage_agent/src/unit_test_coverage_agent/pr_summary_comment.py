@@ -33,6 +33,8 @@ def render_pr_summary_comment(
     full_report_markdown: str | None = None,
     patch_proposal_markdown: str | None = None,
     *,
+    llm_summary: dict[str, Any] | None = None,
+    llm_note: str | None = None,
     max_full_report_chars: int = 30000,
     max_patch_proposal_chars: int = 20000,
     max_inline_items: int = 20,
@@ -69,6 +71,33 @@ def render_pr_summary_comment(
         f"| JaCoCo reports | {contract.get('jacoco_reports_found', 0)} |",
         "",
     ]
+
+    if llm_summary or llm_note:
+        lines.extend([
+            "### OpenAI-enhanced advisory summary",
+            "",
+        ])
+        if llm_summary:
+            lines.extend([
+                str(llm_summary.get("executive_summary", "")).strip(),
+                "",
+                f"- Risk assessment: `{llm_summary.get('risk_assessment', 'unknown')}`",
+                "",
+                "#### Reviewer guidance",
+                "",
+            ])
+            lines.extend([f"- {item}" for item in _as_list(llm_summary.get("reviewer_guidance"))])
+            lines.extend(["", "#### Developer next steps", ""])
+            lines.extend([f"- {item}" for item in _as_list(llm_summary.get("developer_next_steps"))])
+            lines.extend(["", "#### Limitations", ""])
+            lines.extend([f"- {item}" for item in _as_list(llm_summary.get("limitations"))])
+            lines.append("")
+        if llm_note:
+            lines.extend([f"_{llm_note}_", ""])
+        lines.extend([
+            "_This advisory section cannot override the deterministic status, recommendation, policy findings, changed files, coverage percentages, affected services, test failure counts, or Maven failure status shown below._",
+            "",
+        ])
 
     shown, truncated = _limit_items(policy_violations, max_inline_items)
     if shown:
