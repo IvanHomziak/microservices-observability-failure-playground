@@ -1,5 +1,7 @@
 # Unit Test Coverage Agent
 
+For OpenAI advisory mode and workflow usage, see [`docs/unit-test-coverage-openai-advisory-mode.md`](../../docs/unit-test-coverage-openai-advisory-mode.md) from the repository root.
+
 Evidence-first agent for reviewing whether changed Java production code has adequate unit-test coverage.
 
 ## Scope
@@ -34,13 +36,15 @@ Default provider:
 deterministic
 ```
 
-`deterministic` performs no external call.
+`deterministic` is the default provider. It performs no external call, does not read `OPENAI_API_KEY`, and renders stable output from local deterministic evidence only.
 
-`langchain-openai` requires:
+`langchain-openai` is optional advisory mode. It is explicit opt-in with `--provider langchain-openai` and requires:
 
 ```text
 OPENAI_API_KEY
 ```
+
+The key is required only for `langchain-openai`; deterministic mode must work without it. The key value and environment variables must not be rendered into reports, prompts, or error messages.
 
 Optional model override:
 
@@ -48,11 +52,13 @@ Optional model override:
 OPENAI_MODEL
 ```
 
-Default model:
+Default model when `OPENAI_MODEL` is absent:
 
 ```text
 gpt-4.1-mini
 ```
+
+The model name is selected locally. The provider does not validate model availability by making a startup OpenAI call.
 
 ## Inputs
 
@@ -100,6 +106,29 @@ python -m unit_test_coverage_agent.main \
   --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json
 ```
 
+## Manual workflow with OpenAI advisory provider
+
+The `Unit Test Coverage Agent` GitHub Actions workflow is manual/advisory only and starts only from `workflow_dispatch`. It must not be used as the required automatic pull request quality gate.
+
+To run the manual workflow with OpenAI advisory explanations:
+
+1. Add a repository secret:
+   - Go to `Settings -> Secrets and variables -> Actions -> New repository secret`.
+   - Name the secret `OPENAI_API_KEY`.
+2. Run the workflow:
+   - Go to `Actions -> Unit Test Coverage Agent -> Run workflow`.
+3. Use these inputs when OpenAI advisory mode is desired:
+   - `provider`: `langchain-openai`
+   - `model`: `gpt-4.1-mini`
+   - `base_ref`: `origin/main`
+   - `head_ref`: `HEAD`
+   - `run_tests`: `true` to run Maven verification first, or `false` to analyze existing evidence if present.
+   - `policy_file`: `coverage-policy.yml` for advisory analysis, or `coverage-policy-pr.yml` for strict PR-like validation.
+
+Manual coverage workflows install Java 21 before Maven verification. Before Maven runs, they detect changed files and affected services from the selected base/head refs and write `coverage-agent/raw/changed-files.txt` and `coverage-agent/raw/affected-services.txt`. When `run_tests` is enabled, Maven `verify` runs only for services listed in `affected-services.txt`; docs-only diffs with no affected services skip Maven with a clear message and still generate a report. If Maven fails after Java setup, it should represent a real build or test issue rather than missing JDK setup. Failed Maven services are captured as newline-delimited evidence in `coverage-agent/raw/maven-failed-services.txt` and passed to the report generator with `--test-execution-failures-file coverage-agent/raw/maven-failed-services.txt`. The generated JSON surfaces those services in `test_execution_failures`, and the Markdown report renders them under `## Test execution failures`.
+
+Deterministic mode remains the default, does not require `OPENAI_API_KEY`, and performs no external model call. `langchain-openai` requires `OPENAI_API_KEY`, uses `OPENAI_MODEL` from the workflow `model` input, and is advisory only. Pass/fail remains deterministic when enforcement is used; OpenAI may refine explanations and recommendations but must not control required PR gate decisions.
+
 ## Coverage policy
 
 Default policy file:
@@ -108,28 +137,47 @@ Default policy file:
 coverage-policy.yml
 ```
 
+Manual coverage workflows expose an explicit `policy_file` input so operators can select the deterministic policy before report generation:
+
+```text
+Advisory run:
+policy_file: coverage-policy.yml
+
+Strict PR-like run:
+policy_file: coverage-policy-pr.yml
+```
+
+The advisory policy produces policy warnings for missing or unknown evidence that is useful during exploratory analysis. The strict PR-like policy promotes the same serious evidence gaps to policy violations and can fail deterministic enforcement. The automatic `Unit Test Coverage PR Agent` already uses the strict PR policy (`coverage-policy-pr.yml`) and is unchanged by manual workflow selection.
+
 Supported fields:
 
 ```text
 minimum_line_coverage_for_changed_classes
 minimum_method_coverage_for_changed_classes
+minimum_branch_coverage_for_changed_classes
 require_test_changes_when_production_code_changes
+require_related_test_change_when_production_code_changes
 fail_on_unknown_coverage
 fail_on_missing_surefire_evidence
 fail_on_missing_jacoco_evidence
+fail_on_maven_verification_failure
+fail_on_test_failures
 ```
 
-The policy is advisory by default. It influences the generated report, PR comment, and merge recommendation, but it does not configure GitHub branch protection automatically.
+The policy is advisory by default. It influences the generated report, PR comment, and merge recommendation, but it does not configure GitHub branch protection automatically. Maven verification failures are advisory when `fail_on_maven_verification_failure` is disabled and blocking policy violations when that policy is enabled.
 
 ## Evidence sources
 
 The agent reads:
 
 ```text
-git diff --name-only <base_ref>...<head_ref>
+git diff --name-status --find-renames --find-copies <base_ref>...<head_ref>
+coverage-agent/raw/changed-files.txt
+coverage-agent/raw/affected-services.txt
 */target/surefire-reports/TEST-*.xml
 */target/site/jacoco/jacoco.xml
 coverage-policy.yml
+coverage-agent/raw/maven-failed-services.txt
 ```
 
 ## Output
@@ -175,20 +223,38 @@ The report is advisory only. It does not authorize code mutation, test deletion,
 The LangChain provider:
 
 - receives only the deterministic coverage evidence contract;
+- does not receive unrestricted logs, environment variables, request headers, tokens, secrets, or full repository source code unless that content is already part of the validated deterministic evidence contract;
 - is explicit opt-in;
 - requires `OPENAI_API_KEY`;
+- uses `OPENAI_MODEL` when set and otherwise uses `gpt-4.1-mini`;
 - must return JSON only;
 - has its response validated against the local output schema;
+- cannot decide pass/fail;
+- cannot change deterministic authority fields such as `coverage_status`, `merge_recommendation`, `policy_violations`, or `policy_warnings`;
+- may only refine advisory explanation fields that remain supported by deterministic evidence;
 - cannot mutate code;
 - cannot create PRs;
 - cannot deploy;
 - cannot access write permissions from the workflow.
 
-Markdown is rendered from validated JSON, not from raw model text.
+Pass/fail remains based only on deterministic policy violations in the validated JSON contract. Markdown is rendered from validated JSON, not from raw model text. Provider metadata is printed by the CLI as provider name, model name, and whether an external call was used; it must not include API keys, token values, secrets, or raw request headers.
+
+The automatic pull request quality gate remains deterministic-only and separate from optional OpenAI advisory mode.
 
 ## Tests
 
 ```bash
 cd agents/unit_test_coverage_agent
+python -m compileall src tests
 python -m unittest discover -s tests
 ```
+
+## Optional OpenAI-enhanced PR comments
+
+The manual `Unit Test Coverage PR Comment` workflow can add an optional OpenAI-generated advisory summary to the PR comment when `use_llm_summary=true`. The default remains deterministic-only: no `OPENAI_API_KEY` is required and no external model call is made when the input is `false`.
+
+When enabled, the OpenAI call happens only in the trusted `update-pr-comment` job after deterministic artifacts have been generated and downloaded. The model receives validated coverage JSON, validated patch proposal JSON, and optionally trimmed deterministic Markdown. The response must validate as bounded JSON before rendering; invalid responses fall back to the deterministic comment with a short unavailable note.
+
+The enhanced summary may improve explanation quality, reviewer guidance, developer next steps, and risk wording. It cannot change deterministic policy facts such as `coverage_status`, `merge_recommendation`, `policy_violations`, `policy_warnings`, changed files, coverage percentages, affected services, test failure counts, or Maven failure status. The existing `<!-- unit-test-coverage-agent-comment -->` marker is preserved so the workflow updates the existing bot comment instead of creating duplicates.
+
+See `../../docs/unit-test-coverage-openai-advisory-mode.md` for setup, workflow inputs, and troubleshooting.

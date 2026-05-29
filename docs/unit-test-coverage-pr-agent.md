@@ -1,5 +1,12 @@
 # Unit Test Coverage PR Agent
 
+
+## OpenAI advisory mode boundary
+
+`Unit Test Coverage PR Agent` is the automatic PR quality gate and must remain deterministic-only. Do not add `OPENAI_API_KEY` to `.github/workflows/unit-test-coverage-pr-agent.yml`; the OpenAI advisory layer is documented separately in [Unit Test Coverage OpenAI Advisory Mode](unit-test-coverage-openai-advisory-mode.md).
+
+Branch protection should require `Unit Test Coverage PR Agent` or the actual GitHub check context `Generate deterministic unit test coverage evidence for PR`. Do not require the manual advisory workflows (`Unit Test Coverage Agent`, `Unit Test Coverage PR Comment`, or `Unit Test Coverage Policy Check`) for branch protection.
+
 ## Purpose
 
 This workflow automatically validates unit test coverage evidence for pull requests.
@@ -75,7 +82,17 @@ The PR workflow uses:
 coverage-policy-pr.yml
 ```
 
-This policy is stricter than the default advisory policy.
+This policy is stricter than the default advisory policy. Manual coverage workflows can now select either policy explicitly with the `policy_file` input:
+
+```text
+Advisory run:
+policy_file: coverage-policy.yml
+
+Strict PR-like run:
+policy_file: coverage-policy-pr.yml
+```
+
+The advisory policy reports missing or unknown evidence as warnings for exploratory analysis. The strict PR-like policy reports serious evidence gaps as policy violations and can fail enforcement. The automatic PR Agent already uses `coverage-policy-pr.yml`, so it remains strict without requiring a manual input.
 
 It fails on:
 

@@ -72,7 +72,31 @@ Optional model input defaults to:
 gpt-4.1-mini
 ```
 
-Do not use OpenAI/LangChain mode in write-scoped PR comment workflows.
+Use OpenAI only as optional advisory wording in the manual PR comment workflow; deterministic artifacts must be generated first, and the red/green result must not change.
+
+
+## How to demo OpenAI advisory mode
+
+Detailed setup and safety rules are in [Unit Test Coverage OpenAI Advisory Mode](unit-test-coverage-openai-advisory-mode.md).
+
+Demo sequence:
+
+1. Open a negative validation PR.
+2. Show `Unit Test Coverage PR Agent` fails deterministically.
+3. Explain that branch protection blocks merge.
+4. Run `Unit Test Coverage PR Comment` with `use_llm_summary=false`.
+5. Show the deterministic comment.
+6. Run `Unit Test Coverage PR Comment` with `use_llm_summary=true`.
+7. Show the improved human explanation.
+8. Emphasize that the red/green result did not change.
+
+Key message:
+
+```text
+AI improves explanation, not enforcement.
+```
+
+Required branch protection should use `Unit Test Coverage PR Agent`, not `Unit Test Coverage Agent`, `Unit Test Coverage PR Comment`, or `Unit Test Coverage Policy Check`.
 
 ## Validation sequence
 
