@@ -1,5 +1,7 @@
 # Unit Test Coverage Agent
 
+For OpenAI advisory mode and workflow usage, see [`docs/unit-test-coverage-openai-advisory-mode.md`](../../docs/unit-test-coverage-openai-advisory-mode.md) from the repository root.
+
 Evidence-first agent for reviewing whether changed Java production code has adequate unit-test coverage.
 
 ## Scope
