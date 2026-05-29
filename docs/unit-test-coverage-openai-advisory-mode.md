@@ -17,13 +17,14 @@ The deterministic layer is the source of truth for coverage evidence and pass/fa
 - Git diff;
 - affected service detection;
 - Maven `verify`;
+- Maven failed-service evidence from `coverage-agent/raw/maven-failed-services.txt`;
 - Surefire XML;
 - JaCoCo XML;
 - coverage policy;
 - `enforce_policy`;
 - green/red decisions.
 
-This layer decides `coverage_status`, `merge_recommendation`, `policy_violations`, and policy enforcement results. It is the only layer that may be used for branch protection or required PR checks.
+This layer decides `coverage_status`, `merge_recommendation`, `policy_violations`, and policy enforcement results. It also passes `--test-execution-failures-file coverage-agent/raw/maven-failed-services.txt` into report generation so collected Maven failures appear in `test_execution_failures` and the Markdown `Test execution failures` section. Maven failure evidence is advisory or blocking depending on the selected deterministic policy. It is the only layer that may be used for branch protection or required PR checks.
 
 ### B. Optional OpenAI advisory layer
 
@@ -171,6 +172,7 @@ OpenAI must not control or override deterministic facts and repository controls,
 - `merge_recommendation`;
 - `policy_violations`;
 - `policy_warnings`;
+- `test_execution_failures`;
 - changed files;
 - coverage percentages;
 - branch protection;

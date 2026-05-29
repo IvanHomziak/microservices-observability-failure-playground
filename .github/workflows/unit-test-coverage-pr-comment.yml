@@ -144,7 +144,8 @@ jobs:
               --json-output coverage-agent/output/unit-test-coverage-report.json \
               --prompt-output coverage-agent/output/coverage-reasoning-prompt.md \
               --patch-proposal-output coverage-agent/output/unit-test-coverage-patch-proposal.md \
-              --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json
+              --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json \
+              --test-execution-failures-file coverage-agent/raw/maven-failed-services.txt
 
           git -C pr-worktree diff --name-only "$BASE_REF...$HEAD_REF" > coverage-agent/raw/changed-files.txt
           find pr-worktree -path "*/target/surefire-reports/TEST-*.xml" -type f -print > coverage-agent/raw/surefire-files.txt || true
