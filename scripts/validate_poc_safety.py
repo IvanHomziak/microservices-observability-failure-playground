@@ -78,6 +78,21 @@ def assert_contains(path: str, text: str, failures: list[str]) -> None:
         failures.append(f"Expected text `{text}` not found in {path}")
 
 
+def assert_not_contains_segment(path: str, segment_name: str, segment: str, text: str, failures: list[str]) -> None:
+    if text in segment:
+        failures.append(f"Forbidden text `{text}` found in {path} segment `{segment_name}`")
+
+
+def workflow_segment(content: str, start_marker: str, end_marker: str | None = None) -> str:
+    if start_marker not in content:
+        return ""
+    _, _, tail = content.partition(start_marker)
+    if end_marker is None or end_marker not in tail:
+        return tail
+    segment, _, _ = tail.partition(end_marker)
+    return segment
+
+
 def validate_expected_files(failures: list[str]) -> None:
     for path in EXPECTED_WORKFLOWS:
         assert_exists(path, failures)
@@ -109,9 +124,25 @@ def validate_pr_comment_workflow_isolation(failures: list[str]) -> None:
     assert_contains(workflow, "COMMENT_MARKER", failures)
     assert_contains(workflow, "pull-requests: write", failures)
     assert_contains(workflow, "issues: write", failures)
-    assert_not_contains(workflow, "OPENAI_API_KEY", failures)
+    assert_contains(workflow, "use_llm_summary", failures)
+    assert_contains(workflow, "USE_LLM_SUMMARY", failures)
+    assert_contains(workflow, "OPENAI_API_KEY", failures)
+    assert_contains(workflow, "inputs.use_llm_summary && secrets.OPENAI_API_KEY || ''", failures)
+    assert_contains(workflow, "OPENAI_API_KEY repository secret is required when use_llm_summary=true", failures)
     assert_not_contains(workflow, "langchain-openai", failures)
     assert_not_contains(workflow, "provider:", failures)
+
+    content = read(workflow)
+    evidence_job = workflow_segment(content, "generate-coverage-evidence:", "update-pr-comment:")
+    comment_job = workflow_segment(content, "update-pr-comment:")
+    if not evidence_job:
+        failures.append(f"Could not locate generate-coverage-evidence job in {workflow}")
+    if not comment_job:
+        failures.append(f"Could not locate update-pr-comment job in {workflow}")
+
+    assert_not_contains_segment(workflow, "generate-coverage-evidence", evidence_job, "OPENAI_API_KEY", failures)
+    assert_not_contains_segment(workflow, "generate-coverage-evidence", evidence_job, "secrets.OPENAI_API_KEY", failures)
+    assert_not_contains_segment(workflow, "generate-coverage-evidence", evidence_job, "USE_LLM_SUMMARY", failures)
 
 
 def validate_policy_check_workflow(failures: list[str]) -> None:
