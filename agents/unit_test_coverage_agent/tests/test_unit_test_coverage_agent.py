@@ -20,7 +20,8 @@ from unit_test_coverage_agent.models import ChangedFile, CoveragePolicy, GitDiff
 from unit_test_coverage_agent.output_schema import assessment_to_contract, validate_contract
 from unit_test_coverage_agent.patch_proposal import build_patch_proposal, patch_proposal_to_dict, render_patch_proposal_markdown
 from unit_test_coverage_agent.policy import load_policy
-from unit_test_coverage_agent.pr_comment import COMMENT_MARKER, render_pr_comment
+from unit_test_coverage_agent import pr_comment as pr_comment_module
+from unit_test_coverage_agent.pr_comment import COMMENT_MARKER, MissingOpenAIAPIKeyError, render_pr_comment
 from unit_test_coverage_agent.pr_summary_comment import _truncate_markdown, render_pr_summary_comment
 from unit_test_coverage_agent.prompt_builder import build_coverage_reasoning_prompt
 from unit_test_coverage_agent.providers import LangChainOpenAICoverageProvider, get_provider
@@ -600,6 +601,139 @@ fail_on_test_failures: true
         self.assertIn("Proposal status", comment)
         self.assertIn("does not authorize code mutation", comment)
 
+
+
+    def test_pr_comment_deterministic_comment_preserves_policy_and_class_coverage_without_openai(self) -> None:
+        contract = build_partial_contract()
+        proposal = patch_proposal_to_dict(build_patch_proposal(contract))
+
+        with patch.dict(os.environ, {}, clear=True):
+            comment = render_pr_comment(contract, proposal)
+
+        self.assertIn(COMMENT_MARKER, comment)
+        self.assertIn("**Status:** `policy_violation`", comment)
+        self.assertIn("Policy violations", comment)
+        self.assertIn("Changed class coverage", comment)
+        self.assertIn("com.example.OrderService", comment)
+        self.assertIn("66.67", comment)
+        self.assertNotIn("OpenAI-enhanced advisory summary", comment)
+
+    def test_pr_comment_llm_summary_disabled_matches_deterministic_comment(self) -> None:
+        contract = build_partial_contract()
+        proposal = patch_proposal_to_dict(build_patch_proposal(contract))
+
+        deterministic = render_pr_comment(contract, proposal)
+        disabled = render_pr_comment(contract, proposal, llm_summary=None)
+
+        self.assertEqual(deterministic, disabled)
+
+    def test_pr_comment_llm_summary_enabled_requires_openai_key_without_leaking_environment(self) -> None:
+        contract = build_partial_contract()
+        proposal = patch_proposal_to_dict(build_patch_proposal(contract))
+
+        with patch.dict(os.environ, {"SECRET_VALUE": "must-not-leak"}, clear=True):
+            with self.assertRaises(MissingOpenAIAPIKeyError) as context:
+                pr_comment_module.generate_llm_summary(contract, proposal, None, "gpt-test")
+
+        message = str(context.exception)
+        self.assertIn("OPENAI_API_KEY repository secret is required when use_llm_summary=true", message)
+        self.assertNotIn("must-not-leak", message)
+        self.assertNotIn("SECRET_VALUE", message)
+
+    def test_pr_comment_llm_summary_cannot_override_deterministic_policy_facts(self) -> None:
+        contract = build_partial_contract()
+        proposal = patch_proposal_to_dict(build_patch_proposal(contract))
+        summary = pr_comment_module.validate_llm_summary(
+            {
+                "executive_summary": "Review the deterministic policy findings before merging.",
+                "reviewer_guidance": ["Focus on the uncovered changed class shown in the deterministic table."],
+                "developer_next_steps": ["Add tests for the listed uncovered method and rerun Maven verification."],
+                "risk_assessment": "high",
+                "limitations": ["This advisory text is limited to the provided artifacts."],
+            }
+        )
+
+        comment = render_pr_comment(contract, proposal, llm_summary=summary)
+
+        self.assertIn("OpenAI-enhanced advisory summary", comment)
+        self.assertIn("**Status:** `policy_violation`", comment)
+        self.assertIn("**Recommendation:** `manual_review`", comment)
+        self.assertIn("Policy violations", comment)
+        self.assertIn("com.example.OrderService", comment)
+        self.assertIn("This advisory section cannot override", comment)
+
+    def test_pr_comment_llm_response_with_authoritative_field_is_rejected(self) -> None:
+        with self.assertRaises(pr_comment_module.InvalidLLMCommentSummaryError) as context:
+            pr_comment_module.validate_llm_summary(
+                {
+                    "executive_summary": "Looks ready.",
+                    "reviewer_guidance": ["Merge."],
+                    "developer_next_steps": ["None."],
+                    "risk_assessment": "low",
+                    "limitations": ["None."],
+                    "coverage_status": "sufficient",
+                }
+            )
+
+        self.assertIn("unexpected fields: coverage_status", str(context.exception))
+
+    def test_pr_comment_invalid_llm_response_falls_back_to_deterministic_comment_with_note(self) -> None:
+        contract = build_partial_contract()
+        proposal = patch_proposal_to_dict(build_patch_proposal(contract))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            coverage_json = root / "unit-test-coverage-report.json"
+            patch_json = root / "unit-test-coverage-patch-proposal.json"
+            coverage_md = root / "unit-test-coverage-report.md"
+            patch_md = root / "unit-test-coverage-patch-proposal.md"
+            output = root / "pr-comment.md"
+            llm_output = root / "llm-pr-comment-summary.json"
+            coverage_json.write_text(json.dumps(contract), encoding="utf-8")
+            patch_json.write_text(json.dumps(proposal), encoding="utf-8")
+            coverage_md.write_text("# deterministic report", encoding="utf-8")
+            patch_md.write_text("# deterministic patch proposal", encoding="utf-8")
+
+            argv = [
+                "pr_comment",
+                "--coverage-json",
+                str(coverage_json),
+                "--patch-proposal-json",
+                str(patch_json),
+                "--coverage-md",
+                str(coverage_md),
+                "--patch-proposal-md",
+                str(patch_md),
+                "--output",
+                str(output),
+                "--use-llm-summary",
+                "--model",
+                "gpt-test",
+                "--llm-summary-output",
+                str(llm_output),
+            ]
+            with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+                with patch.object(pr_comment_module, "_invoke_openai_summary", return_value="not json"):
+                    with patch.object(sys, "argv", argv):
+                        self.assertEqual(0, pr_comment_module.main())
+
+            comment = output.read_text(encoding="utf-8")
+            llm_artifact = json.loads(llm_output.read_text(encoding="utf-8"))
+
+        self.assertIn(COMMENT_MARKER, comment)
+        self.assertIn("**Status:** `policy_violation`", comment)
+        self.assertIn("LLM summary unavailable due to invalid response.", comment)
+        self.assertFalse(llm_artifact["summary_available"])
+        self.assertIsNone(llm_artifact["summary"])
+
+    def test_workflow_comment_logic_preserves_marker_and_patches_existing_comment(self) -> None:
+        workflow = (PACKAGE_ROOT.parents[1] / ".github" / "workflows" / "unit-test-coverage-pr-comment.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('COMMENT_MARKER: "<!-- unit-test-coverage-agent-comment -->"', workflow)
+        self.assertIn("contains(env.COMMENT_MARKER)", workflow)
+        self.assertIn("--method PATCH", workflow)
+        self.assertIn("gh pr comment", workflow)
 
     def test_assessment_maven_failure_can_be_policy_violation(self) -> None:
         git = GitDiffEvidence(

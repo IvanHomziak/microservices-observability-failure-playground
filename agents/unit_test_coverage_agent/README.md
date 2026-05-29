@@ -224,3 +224,13 @@ cd agents/unit_test_coverage_agent
 python -m compileall src tests
 python -m unittest discover -s tests
 ```
+
+## Optional OpenAI-enhanced PR comments
+
+The manual `Unit Test Coverage PR Comment` workflow can add an optional OpenAI-generated advisory summary to the PR comment when `use_llm_summary=true`. The default remains deterministic-only: no `OPENAI_API_KEY` is required and no external model call is made when the input is `false`.
+
+When enabled, the OpenAI call happens only in the trusted `update-pr-comment` job after deterministic artifacts have been generated and downloaded. The model receives validated coverage JSON, validated patch proposal JSON, and optionally trimmed deterministic Markdown. The response must validate as bounded JSON before rendering; invalid responses fall back to the deterministic comment with a short unavailable note.
+
+The enhanced summary may improve explanation quality, reviewer guidance, developer next steps, and risk wording. It cannot change deterministic policy facts such as `coverage_status`, `merge_recommendation`, `policy_violations`, `policy_warnings`, changed files, coverage percentages, affected services, test failure counts, or Maven failure status. The existing `<!-- unit-test-coverage-agent-comment -->` marker is preserved so the workflow updates the existing bot comment instead of creating duplicates.
+
+See `../../docs/unit-test-coverage-openai-advisory-mode.md` for setup, workflow inputs, and troubleshooting.

@@ -12,6 +12,16 @@ on:
         required: true
         default: false
         type: boolean
+      use_llm_summary:
+        description: "Use OpenAI to enhance advisory PR comment"
+        required: true
+        default: false
+        type: boolean
+      model:
+        description: "OpenAI model for advisory PR comment"
+        required: false
+        default: "gpt-4.1-mini"
+        type: string
 
 permissions:
   contents: read
@@ -181,15 +191,34 @@ jobs:
 
       - name: Render PR comment from validated artifacts
         shell: bash
+        env:
+          USE_LLM_SUMMARY: ${{ inputs.use_llm_summary }}
+          OPENAI_API_KEY: ${{ inputs.use_llm_summary && secrets.OPENAI_API_KEY || '' }}
+          OPENAI_MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
+
+          llm_args=()
+          if [ "$USE_LLM_SUMMARY" = "true" ]; then
+            if [ -z "${OPENAI_API_KEY:-}" ]; then
+              echo "OPENAI_API_KEY repository secret is required when use_llm_summary=true" >&2
+              exit 1
+            fi
+            llm_args+=(
+              --use-llm-summary
+              --model "$OPENAI_MODEL"
+              --llm-summary-output coverage-agent/output/llm-pr-comment-summary.json
+            )
+          fi
+
           PYTHONPATH="agent-repo/agents/unit_test_coverage_agent/src" \
             python -m unit_test_coverage_agent.pr_comment \
               --coverage-json coverage-agent/output/unit-test-coverage-report.json \
               --patch-proposal-json coverage-agent/output/unit-test-coverage-patch-proposal.json \
               --coverage-md coverage-agent/output/unit-test-coverage-report.md \
               --patch-proposal-md coverage-agent/output/unit-test-coverage-patch-proposal.md \
-              --output coverage-agent/output/pr-comment.md
+              --output coverage-agent/output/pr-comment.md \
+              "${llm_args[@]}"
 
           cat coverage-agent/output/pr-comment.md
 
@@ -234,6 +263,7 @@ jobs:
             coverage-agent/output/unit-test-coverage-patch-proposal.md
             coverage-agent/output/unit-test-coverage-patch-proposal.json
             coverage-agent/output/coverage-reasoning-prompt.md
+            coverage-agent/output/llm-pr-comment-summary.json
             coverage-agent/raw/*.json
             coverage-agent/raw/*.txt
           if-no-files-found: warn
