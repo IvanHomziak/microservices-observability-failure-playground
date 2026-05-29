@@ -104,6 +104,26 @@ python -m unit_test_coverage_agent.main \
   --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json
 ```
 
+## Manual workflow with OpenAI advisory provider
+
+The `Unit Test Coverage Agent` GitHub Actions workflow is manual/advisory only and starts only from `workflow_dispatch`. It must not be used as the required automatic pull request quality gate.
+
+To run the manual workflow with OpenAI advisory explanations:
+
+1. Add a repository secret:
+   - Go to `Settings -> Secrets and variables -> Actions -> New repository secret`.
+   - Name the secret `OPENAI_API_KEY`.
+2. Run the workflow:
+   - Go to `Actions -> Unit Test Coverage Agent -> Run workflow`.
+3. Use these inputs when OpenAI advisory mode is desired:
+   - `provider`: `langchain-openai`
+   - `model`: `gpt-4.1-mini`
+   - `base_ref`: `origin/main`
+   - `head_ref`: `HEAD`
+   - `run_tests`: `true` to run Maven verification first, or `false` to analyze existing evidence if present.
+
+Deterministic mode remains the default, does not require `OPENAI_API_KEY`, and performs no external model call. `langchain-openai` requires `OPENAI_API_KEY`, uses `OPENAI_MODEL` from the workflow `model` input, and is advisory only. Pass/fail remains deterministic when enforcement is used; OpenAI may refine explanations and recommendations but must not control required PR gate decisions.
+
 ## Coverage policy
 
 Default policy file:
