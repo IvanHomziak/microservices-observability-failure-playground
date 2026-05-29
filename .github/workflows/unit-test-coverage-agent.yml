@@ -95,6 +95,8 @@ jobs:
             audit-service
           )
 
+          mkdir -p coverage-agent/raw
+
           failed_services=()
 
           for service in "${services[@]}"; do
@@ -108,7 +110,7 @@ jobs:
           done
 
           if [ ${#failed_services[@]} -gt 0 ]; then
-            printf '%s\n' "${failed_services[@]}" > coverage-agent-maven-failed-services.txt
+            printf '%s\n' "${failed_services[@]}" > coverage-agent/raw/maven-failed-services.txt
           fi
 
       - name: Generate coverage report
@@ -135,15 +137,12 @@ jobs:
               --json-output coverage-agent/output/unit-test-coverage-report.json \
               --prompt-output coverage-agent/output/coverage-reasoning-prompt.md \
               --patch-proposal-output coverage-agent/output/unit-test-coverage-patch-proposal.md \
-              --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json
+              --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json \
+              --test-execution-failures-file coverage-agent/raw/maven-failed-services.txt
 
           git diff --name-only "${{ inputs.base_ref }}...${{ inputs.head_ref }}" > coverage-agent/raw/changed-files.txt
           find . -path "*/target/surefire-reports/TEST-*.xml" -type f -print > coverage-agent/raw/surefire-files.txt || true
           find . -path "*/target/site/jacoco/jacoco.xml" -type f -print > coverage-agent/raw/jacoco-files.txt || true
-          if [ -f coverage-agent-maven-failed-services.txt ]; then
-            cp coverage-agent-maven-failed-services.txt coverage-agent/raw/maven-failed-services.txt
-          fi
-
           cat coverage-agent/output/unit-test-coverage-report.md
           cat coverage-agent/output/unit-test-coverage-patch-proposal.md
 

@@ -124,7 +124,7 @@ To run the manual workflow with OpenAI advisory explanations:
    - `head_ref`: `HEAD`
    - `run_tests`: `true` to run Maven verification first, or `false` to analyze existing evidence if present.
 
-Manual coverage workflows install Java 21 before Maven verification. If Maven fails after Java setup, it should represent a real build or test issue rather than missing JDK setup.
+Manual coverage workflows install Java 21 before Maven verification. If Maven fails after Java setup, it should represent a real build or test issue rather than missing JDK setup. Failed Maven services are captured as newline-delimited evidence in `coverage-agent/raw/maven-failed-services.txt` and passed to the report generator with `--test-execution-failures-file coverage-agent/raw/maven-failed-services.txt`. The generated JSON surfaces those services in `test_execution_failures`, and the Markdown report renders them under `## Test execution failures`.
 
 Deterministic mode remains the default, does not require `OPENAI_API_KEY`, and performs no external model call. `langchain-openai` requires `OPENAI_API_KEY`, uses `OPENAI_MODEL` from the workflow `model` input, and is advisory only. Pass/fail remains deterministic when enforcement is used; OpenAI may refine explanations and recommendations but must not control required PR gate decisions.
 
@@ -145,9 +145,10 @@ require_test_changes_when_production_code_changes
 fail_on_unknown_coverage
 fail_on_missing_surefire_evidence
 fail_on_missing_jacoco_evidence
+fail_on_maven_verification_failure
 ```
 
-The policy is advisory by default. It influences the generated report, PR comment, and merge recommendation, but it does not configure GitHub branch protection automatically.
+The policy is advisory by default. It influences the generated report, PR comment, and merge recommendation, but it does not configure GitHub branch protection automatically. Maven verification failures are advisory when `fail_on_maven_verification_failure` is disabled and blocking policy violations when that policy is enabled.
 
 ## Evidence sources
 
@@ -158,6 +159,7 @@ git diff --name-only <base_ref>...<head_ref>
 */target/surefire-reports/TEST-*.xml
 */target/site/jacoco/jacoco.xml
 coverage-policy.yml
+coverage-agent/raw/maven-failed-services.txt
 ```
 
 ## Output

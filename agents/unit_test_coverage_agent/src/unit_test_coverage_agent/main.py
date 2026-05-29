@@ -15,6 +15,18 @@ from .renderer import render_markdown
 from .surefire_loader import load_surefire_evidence
 
 
+def load_test_execution_failures(path: Path | None) -> tuple[str, ...]:
+    if path is None or not path.exists():
+        return ()
+    return tuple(
+        dict.fromkeys(
+            line.strip()
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate unit test coverage evidence and optional LangChain reasoning report.")
     parser.add_argument("--repository-root", required=True, type=Path)
@@ -34,15 +46,7 @@ def main() -> int:
     git = load_changed_files(args.repository_root, args.base_ref, args.head_ref)
     surefire = load_surefire_evidence(args.repository_root)
     jacoco = load_jacoco_evidence(args.repository_root)
-    failures: tuple[str, ...] = ()
-    if args.test_execution_failures_file is not None and args.test_execution_failures_file.exists():
-        failures = tuple(
-            dict.fromkeys(
-                line.strip()
-                for line in args.test_execution_failures_file.read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            )
-        )
+    failures = load_test_execution_failures(args.test_execution_failures_file)
 
     assessment = assess_coverage(git, surefire, jacoco, policy, test_execution_failures=failures)
     deterministic_contract = assessment_to_contract(assessment)

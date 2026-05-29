@@ -16,6 +16,7 @@ from unit_test_coverage_agent.assessment import assess_coverage
 from unit_test_coverage_agent.enforce_policy import enforce_policy
 from unit_test_coverage_agent.git_diff import classify_file
 from unit_test_coverage_agent.jacoco_loader import load_jacoco_evidence
+from unit_test_coverage_agent.main import load_test_execution_failures
 from unit_test_coverage_agent.models import ChangedFile, CoveragePolicy, GitDiffEvidence
 from unit_test_coverage_agent.output_schema import assessment_to_contract, validate_contract
 from unit_test_coverage_agent.patch_proposal import build_patch_proposal, patch_proposal_to_dict, render_patch_proposal_markdown
@@ -81,6 +82,22 @@ def build_partial_contract() -> dict:
 
 
 class TestUnitTestCoverageAgent(unittest.TestCase):
+
+    def test_load_test_execution_failures_reads_newline_delimited_services(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            failures_file = Path(temp_dir) / "maven-failed-services.txt"
+            failures_file.write_text("orders-service\n\npayments-service\norders-service\n", encoding="utf-8")
+
+            failures = load_test_execution_failures(failures_file)
+
+            self.assertEqual(("orders-service", "payments-service"), failures)
+
+    def test_load_test_execution_failures_missing_file_is_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            failures = load_test_execution_failures(Path(temp_dir) / "missing-maven-failed-services.txt")
+
+            self.assertEqual((), failures)
+
     def test_classify_changed_files(self) -> None:
         self.assertEqual("production-java", classify_file("orders-service/src/main/java/com/example/OrderService.java").category)
         self.assertEqual("test-java", classify_file("orders-service/src/test/java/com/example/OrderServiceTest.java").category)
@@ -765,6 +782,7 @@ fail_on_test_failures: true
         )
         contract = assessment_to_contract(assessment)
 
+        self.assertEqual(("orders-service",), assessment.test_execution_failures)
         self.assertIn("orders-service", contract["test_execution_failures"])
         self.assertTrue(any("Maven verification failed for `orders-service`" in x for x in contract["policy_violations"]))
 
@@ -904,6 +922,14 @@ fail_on_test_failures: true
         self.assertIn("## Test execution failures", markdown)
         self.assertIn("## Failed test suites", markdown)
         self.assertIn("orders-service", markdown)
+
+    def test_output_schema_accepts_non_empty_test_execution_failures(self) -> None:
+        contract = build_partial_contract()
+        contract["test_execution_failures"] = ["orders-service", "payments-service"]
+
+        errors = validate_contract(contract)
+
+        self.assertFalse(errors)
 
     def test_output_schema_validates_test_execution_failures(self) -> None:
         contract = build_partial_contract()
