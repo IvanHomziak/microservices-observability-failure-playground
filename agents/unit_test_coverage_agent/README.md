@@ -34,13 +34,15 @@ Default provider:
 deterministic
 ```
 
-`deterministic` performs no external call.
+`deterministic` is the default provider. It performs no external call, does not read `OPENAI_API_KEY`, and renders stable output from local deterministic evidence only.
 
-`langchain-openai` requires:
+`langchain-openai` is optional advisory mode. It is explicit opt-in with `--provider langchain-openai` and requires:
 
 ```text
 OPENAI_API_KEY
 ```
+
+The key is required only for `langchain-openai`; deterministic mode must work without it. The key value and environment variables must not be rendered into reports, prompts, or error messages.
 
 Optional model override:
 
@@ -48,11 +50,13 @@ Optional model override:
 OPENAI_MODEL
 ```
 
-Default model:
+Default model when `OPENAI_MODEL` is absent:
 
 ```text
 gpt-4.1-mini
 ```
+
+The model name is selected locally. The provider does not validate model availability by making a startup OpenAI call.
 
 ## Inputs
 
@@ -175,20 +179,28 @@ The report is advisory only. It does not authorize code mutation, test deletion,
 The LangChain provider:
 
 - receives only the deterministic coverage evidence contract;
+- does not receive unrestricted logs, environment variables, request headers, tokens, secrets, or full repository source code unless that content is already part of the validated deterministic evidence contract;
 - is explicit opt-in;
 - requires `OPENAI_API_KEY`;
+- uses `OPENAI_MODEL` when set and otherwise uses `gpt-4.1-mini`;
 - must return JSON only;
 - has its response validated against the local output schema;
+- cannot decide pass/fail;
+- cannot change deterministic authority fields such as `coverage_status`, `merge_recommendation`, `policy_violations`, or `policy_warnings`;
+- may only refine advisory explanation fields that remain supported by deterministic evidence;
 - cannot mutate code;
 - cannot create PRs;
 - cannot deploy;
 - cannot access write permissions from the workflow.
 
-Markdown is rendered from validated JSON, not from raw model text.
+Pass/fail remains based only on deterministic policy violations in the validated JSON contract. Markdown is rendered from validated JSON, not from raw model text. Provider metadata is printed by the CLI as provider name, model name, and whether an external call was used; it must not include API keys, token values, secrets, or raw request headers.
+
+The automatic pull request quality gate remains deterministic-only and separate from optional OpenAI advisory mode.
 
 ## Tests
 
 ```bash
 cd agents/unit_test_coverage_agent
+python -m compileall src tests
 python -m unittest discover -s tests
 ```
