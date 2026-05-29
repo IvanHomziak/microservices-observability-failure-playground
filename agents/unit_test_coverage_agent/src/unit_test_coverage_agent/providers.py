@@ -63,8 +63,9 @@ class DeterministicCoverageProvider:
 class LangChainOpenAICoverageProvider:
     name = "langchain-openai"
 
-    def __init__(self, model: str | None = None) -> None:
+    def __init__(self, model: str | None = None, fallback_on_invalid_response: bool = False) -> None:
         self.model = model or os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
+        self.fallback_on_invalid_response = fallback_on_invalid_response
 
     def refine(self, contract: dict) -> ProviderResult:
         api_key = os.getenv("OPENAI_API_KEY")
@@ -81,19 +82,19 @@ class LangChainOpenAICoverageProvider:
             advisory_contract = self._parse_json_contract(output_text)
             errors = validate_contract(advisory_contract)
             if errors:
-                return self._fallback_result(contract, "Invalid LLM coverage contract: " + "; ".join(errors))
+                return self._handle_invalid_response(contract, "LangChain provider returned invalid coverage contract: " + "; ".join(errors))
 
             authority_errors = self._validate_authoritative_fields(contract, advisory_contract)
             if authority_errors:
-                return self._fallback_result(
+                return self._handle_invalid_response(
                     contract,
-                    "LLM attempted to modify deterministic policy fields: " + "; ".join(authority_errors),
+                    "LangChain provider attempted to modify deterministic policy fields: " + "; ".join(authority_errors),
                 )
 
             refined_contract = self._merge_advisory_fields(contract, advisory_contract)
             errors = validate_contract(refined_contract)
             if errors:
-                return self._fallback_result(contract, "Merged LLM coverage contract was invalid: " + "; ".join(errors))
+                return self._handle_invalid_response(contract, "Merged LangChain coverage contract is invalid: " + "; ".join(errors))
 
             return ProviderResult(
                 provider_name=self.name,
@@ -102,7 +103,12 @@ class LangChainOpenAICoverageProvider:
                 used_external_call=True,
             )
         except Exception as exc:
-            return self._fallback_result(contract, f"{type(exc).__name__}: {exc}")
+            return self._handle_invalid_response(contract, f"{type(exc).__name__}: {exc}")
+
+    def _handle_invalid_response(self, deterministic_contract: dict, reason: str) -> ProviderResult:
+        if self.fallback_on_invalid_response:
+            return self._fallback_result(deterministic_contract, reason)
+        raise RuntimeError(reason)
 
     def _fallback_result(self, deterministic_contract: dict, reason: str) -> ProviderResult:
         return ProviderResult(
@@ -174,5 +180,5 @@ def get_provider(name: str) -> CoverageReasoningProvider:
     if normalized == "deterministic":
         return DeterministicCoverageProvider()
     if normalized in {"langchain", "langchain-openai"}:
-        return LangChainOpenAICoverageProvider()
+        return LangChainOpenAICoverageProvider(fallback_on_invalid_response=True)
     raise ValueError(f"Unsupported coverage reasoning provider: {name}")

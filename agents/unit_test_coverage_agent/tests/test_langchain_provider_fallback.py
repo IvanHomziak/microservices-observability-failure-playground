@@ -101,7 +101,7 @@ class TestLangChainProviderFallback(unittest.TestCase):
                 provider.refine(build_contract())
 
     def test_non_json_llm_response_falls_back_to_deterministic_contract(self) -> None:
-        provider = LangChainOpenAICoverageProvider(model="gpt-4.1-mini")
+        provider = LangChainOpenAICoverageProvider(model="gpt-4.1-mini", fallback_on_invalid_response=True)
         contract = build_contract()
 
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}), patch.object(provider, "_invoke", return_value="not json"):
@@ -114,7 +114,7 @@ class TestLangChainProviderFallback(unittest.TestCase):
         self.assertTrue(any("non-JSON" in warning for warning in result.warnings))
 
     def test_incomplete_llm_contract_falls_back_to_deterministic_contract(self) -> None:
-        provider = LangChainOpenAICoverageProvider(model="gpt-4.1-mini")
+        provider = LangChainOpenAICoverageProvider(model="gpt-4.1-mini", fallback_on_invalid_response=True)
         contract = build_contract()
 
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}), patch.object(
@@ -129,7 +129,7 @@ class TestLangChainProviderFallback(unittest.TestCase):
         self.assertTrue(any("Missing required field" in warning for warning in result.warnings))
 
     def test_llm_attempt_to_modify_authoritative_fields_falls_back(self) -> None:
-        provider = LangChainOpenAICoverageProvider(model="gpt-4.1-mini")
+        provider = LangChainOpenAICoverageProvider(model="gpt-4.1-mini", fallback_on_invalid_response=True)
         contract = build_contract()
         modified = deepcopy(contract)
         modified["coverage_status"] = "policy_violation"
