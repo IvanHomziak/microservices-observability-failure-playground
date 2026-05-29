@@ -69,6 +69,7 @@ class OrderRiskClassifierTest {
         assertEquals("amount must not be null", exception.getMessage());
     }
 
+
     @Test
     void shouldRejectNullCurrency() {
         NullPointerException exception = assertThrows(
