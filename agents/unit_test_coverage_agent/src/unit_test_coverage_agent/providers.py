@@ -101,8 +101,8 @@ class LangChainOpenAICoverageProvider:
                 model=self.model,
                 used_external_call=True,
             )
-        except RuntimeError as exc:
-            return self._fallback_result(contract, str(exc))
+        except Exception as exc:
+            return self._fallback_result(contract, f"{type(exc).__name__}: {exc}")
 
     def _fallback_result(self, deterministic_contract: dict, reason: str) -> ProviderResult:
         return ProviderResult(
