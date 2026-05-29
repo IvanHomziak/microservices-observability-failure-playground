@@ -113,6 +113,11 @@ jobs:
           set -euo pipefail
           mkdir -p coverage-agent/output coverage-agent/raw
 
+          if [ "${{ inputs.provider }}" = "langchain-openai" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "OPENAI_API_KEY repository secret is required for provider=langchain-openai"
+            exit 1
+          fi
+
           PYTHONPATH="agents/unit_test_coverage_agent/src" \
             python -m unit_test_coverage_agent.main \
               --repository-root . \

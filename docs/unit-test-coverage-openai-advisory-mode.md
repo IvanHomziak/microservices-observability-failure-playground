@@ -98,6 +98,23 @@ PYTHONPATH=src python -m unit_test_coverage_agent.main \
 
 If `OPENAI_MODEL` is absent, the provider uses the project default model, `gpt-4.1-mini`. The provider does not make a startup call to validate model availability.
 
+## Manual GitHub Actions workflow
+
+The manual `Unit Test Coverage Agent` workflow may use OpenAI advisory mode because it is started only with `workflow_dispatch`. It must remain separate from the automatic `Unit Test Coverage PR Agent` quality gate.
+
+Manual setup and execution:
+
+1. Add the repository secret in GitHub: `Settings -> Secrets and variables -> Actions -> New repository secret`, with name `OPENAI_API_KEY`.
+2. Open `Actions -> Unit Test Coverage Agent -> Run workflow`.
+3. For OpenAI advisory mode, set:
+   - `provider`: `langchain-openai`
+   - `model`: `gpt-4.1-mini`
+   - `base_ref`: `origin/main`
+   - `head_ref`: `HEAD`
+   - `run_tests`: `true` to generate fresh Maven/Surefire/JaCoCo evidence, or `false` to analyze existing evidence if present.
+
+Deterministic mode is still the default and does not require `OPENAI_API_KEY`. The workflow should fail before report generation with a clear message when `provider=langchain-openai` is selected and the repository secret is missing.
+
 ## Pull request quality gate separation
 
 The automatic pull request quality gate remains deterministic-only. This advisory mode does not require adding `OPENAI_API_KEY` to the PR workflow, does not use `pull_request_target`, does not add write permissions, and does not change branch protection behavior.
