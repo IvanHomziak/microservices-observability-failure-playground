@@ -10,3 +10,4 @@ public class OrdersServiceApplication {
         SpringApplication.run(OrdersServiceApplication.class, args);
     }
 }
+
