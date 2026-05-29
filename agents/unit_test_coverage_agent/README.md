@@ -124,6 +124,8 @@ To run the manual workflow with OpenAI advisory explanations:
    - `head_ref`: `HEAD`
    - `run_tests`: `true` to run Maven verification first, or `false` to analyze existing evidence if present.
 
+Manual coverage workflows install Java 21 before Maven verification. If Maven fails after Java setup, it should represent a real build or test issue rather than missing JDK setup.
+
 Deterministic mode remains the default, does not require `OPENAI_API_KEY`, and performs no external model call. `langchain-openai` requires `OPENAI_API_KEY`, uses `OPENAI_MODEL` from the workflow `model` input, and is advisory only. Pass/fail remains deterministic when enforcement is used; OpenAI may refine explanations and recommendations but must not control required PR gate decisions.
 
 ## Coverage policy
