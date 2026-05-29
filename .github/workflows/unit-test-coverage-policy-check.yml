@@ -18,6 +18,14 @@ on:
         required: true
         default: true
         type: boolean
+      policy_file:
+        description: "Coverage policy file to use"
+        required: true
+        default: "coverage-policy.yml"
+        type: choice
+        options:
+          - coverage-policy.yml
+          - coverage-policy-pr.yml
 
 permissions:
   contents: read
@@ -94,16 +102,23 @@ jobs:
 
       - name: Generate deterministic coverage report
         shell: bash
+        env:
+          POLICY_FILE: ${{ inputs.policy_file }}
         run: |
           set -euo pipefail
           mkdir -p coverage-agent/output coverage-agent/raw
+
+          if [ ! -f "${POLICY_FILE}" ]; then
+            echo "Coverage policy file does not exist: ${POLICY_FILE}"
+            exit 1
+          fi
 
           PYTHONPATH="agents/unit_test_coverage_agent/src" \
             python -m unit_test_coverage_agent.main \
               --repository-root . \
               --base-ref "${{ inputs.base_ref }}" \
               --head-ref "${{ inputs.head_ref }}" \
-              --policy coverage-policy.yml \
+              --policy "${POLICY_FILE}" \
               --provider deterministic \
               --output coverage-agent/output/unit-test-coverage-report.md \
               --json-output coverage-agent/output/unit-test-coverage-report.json \

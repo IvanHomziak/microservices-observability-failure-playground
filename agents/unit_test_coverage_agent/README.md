@@ -123,6 +123,7 @@ To run the manual workflow with OpenAI advisory explanations:
    - `base_ref`: `origin/main`
    - `head_ref`: `HEAD`
    - `run_tests`: `true` to run Maven verification first, or `false` to analyze existing evidence if present.
+   - `policy_file`: `coverage-policy.yml` for advisory analysis, or `coverage-policy-pr.yml` for strict PR-like validation.
 
 Manual coverage workflows install Java 21 before Maven verification. If Maven fails after Java setup, it should represent a real build or test issue rather than missing JDK setup. Failed Maven services are captured as newline-delimited evidence in `coverage-agent/raw/maven-failed-services.txt` and passed to the report generator with `--test-execution-failures-file coverage-agent/raw/maven-failed-services.txt`. The generated JSON surfaces those services in `test_execution_failures`, and the Markdown report renders them under `## Test execution failures`.
 
@@ -136,16 +137,31 @@ Default policy file:
 coverage-policy.yml
 ```
 
+Manual coverage workflows expose an explicit `policy_file` input so operators can select the deterministic policy before report generation:
+
+```text
+Advisory run:
+policy_file: coverage-policy.yml
+
+Strict PR-like run:
+policy_file: coverage-policy-pr.yml
+```
+
+The advisory policy produces policy warnings for missing or unknown evidence that is useful during exploratory analysis. The strict PR-like policy promotes the same serious evidence gaps to policy violations and can fail deterministic enforcement. The automatic `Unit Test Coverage PR Agent` already uses the strict PR policy (`coverage-policy-pr.yml`) and is unchanged by manual workflow selection.
+
 Supported fields:
 
 ```text
 minimum_line_coverage_for_changed_classes
 minimum_method_coverage_for_changed_classes
+minimum_branch_coverage_for_changed_classes
 require_test_changes_when_production_code_changes
+require_related_test_change_when_production_code_changes
 fail_on_unknown_coverage
 fail_on_missing_surefire_evidence
 fail_on_missing_jacoco_evidence
 fail_on_maven_verification_failure
+fail_on_test_failures
 ```
 
 The policy is advisory by default. It influences the generated report, PR comment, and merge recommendation, but it does not configure GitHub branch protection automatically. Maven verification failures are advisory when `fail_on_maven_verification_failure` is disabled and blocking policy violations when that policy is enabled.
