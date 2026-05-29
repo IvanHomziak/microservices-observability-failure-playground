@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -22,7 +23,7 @@ from unit_test_coverage_agent.policy import load_policy
 from unit_test_coverage_agent.pr_comment import COMMENT_MARKER, render_pr_comment
 from unit_test_coverage_agent.pr_summary_comment import _truncate_markdown, render_pr_summary_comment
 from unit_test_coverage_agent.prompt_builder import build_coverage_reasoning_prompt
-from unit_test_coverage_agent.providers import get_provider
+from unit_test_coverage_agent.providers import LangChainOpenAICoverageProvider, get_provider
 from unit_test_coverage_agent.renderer import render_markdown
 from unit_test_coverage_agent.related_tests import build_related_test_evidence
 from unit_test_coverage_agent.surefire_loader import load_surefire_evidence
@@ -462,8 +463,10 @@ fail_on_test_failures: true
         prompt = build_coverage_reasoning_prompt(contract)
 
         self.assertIn("Reason only from the deterministic coverage evidence", prompt)
-        self.assertIn("Do not invent files, classes, methods, tests, coverage percentages, or validation results", prompt)
-        self.assertIn("Return only JSON", prompt)
+        self.assertIn("Do not invent files, classes, methods, tests, coverage percentages", prompt)
+        self.assertIn("Return JSON only", prompt)
+        self.assertIn("Pass/fail authority belongs only to deterministic policy evaluation", prompt)
+        self.assertIn("Do not change coverage_status, merge_recommendation, policy_violations, or policy_warnings", prompt)
         self.assertIn("cancelOrder", prompt)
         self.assertIn("policy_violations", prompt)
 
@@ -471,9 +474,11 @@ fail_on_test_failures: true
         contract = build_partial_contract()
         provider = get_provider("deterministic")
 
-        result = provider.refine(contract)
+        with patch.dict(os.environ, {}, clear=True):
+            result = provider.refine(contract)
 
         self.assertEqual("deterministic", result.provider_name)
+        self.assertIsNone(result.model)
         self.assertFalse(result.used_external_call)
         self.assertFalse(validate_contract(result.contract))
 
@@ -481,9 +486,89 @@ fail_on_test_failures: true
         contract = build_partial_contract()
         provider = get_provider("langchain-openai")
 
-        with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises(RuntimeError):
+        with patch.dict(os.environ, {"OPENAI_MODEL": "gpt-test", "SECRET_VALUE": "must-not-leak"}, clear=True):
+            with self.assertRaises(RuntimeError) as context:
                 provider.refine(contract)
+
+        message = str(context.exception)
+        self.assertIn("OPENAI_API_KEY is required for provider=langchain-openai", message)
+        self.assertNotIn("must-not-leak", message)
+        self.assertNotIn("SECRET_VALUE", message)
+
+    def test_invalid_provider_name_fails_clearly(self) -> None:
+        with self.assertRaises(ValueError) as context:
+            get_provider("unsupported-provider")
+
+        self.assertIn("Unsupported coverage reasoning provider", str(context.exception))
+
+    def test_langchain_provider_uses_openai_model_override_without_startup_validation(self) -> None:
+        with patch.dict(os.environ, {"OPENAI_MODEL": "gpt-custom-model"}, clear=True):
+            provider = get_provider("langchain-openai")
+
+        self.assertIsInstance(provider, LangChainOpenAICoverageProvider)
+        self.assertEqual("gpt-custom-model", provider.model)
+
+    def test_langchain_provider_rejects_invalid_llm_json_response(self) -> None:
+        contract = build_partial_contract()
+        provider = LangChainOpenAICoverageProvider(model="gpt-test")
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+            with patch.object(provider, "_invoke", return_value=json.dumps({"coverage_status": "approve everything"})):
+                with self.assertRaises(RuntimeError) as context:
+                    provider.refine(contract)
+
+        message = str(context.exception)
+        self.assertIn("LangChain provider returned invalid coverage contract", message)
+        self.assertIn("Missing required field", message)
+        self.assertNotIn("test-key", message)
+
+    def test_langchain_provider_rejects_authoritative_policy_changes(self) -> None:
+        contract = build_partial_contract()
+        modified = dict(contract)
+        modified["policy_violations"] = []
+        provider = LangChainOpenAICoverageProvider(model="gpt-test")
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+            with patch.object(provider, "_invoke", return_value=json.dumps(modified)):
+                with self.assertRaises(RuntimeError) as context:
+                    provider.refine(contract)
+
+        self.assertIn("policy_violations must remain deterministic", str(context.exception))
+
+    def test_langchain_provider_merges_only_advisory_fields(self) -> None:
+        contract = build_partial_contract()
+        modified = dict(contract)
+        modified["recommended_tests"] = ["Add focused assertions for cancelOrder error handling."]
+        provider = LangChainOpenAICoverageProvider(model="gpt-test")
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+            with patch.object(provider, "_invoke", return_value=json.dumps(modified)):
+                result = provider.refine(contract)
+
+        self.assertTrue(result.used_external_call)
+        self.assertEqual("langchain-openai", result.provider_name)
+        self.assertEqual("gpt-test", result.model)
+        self.assertEqual(contract["coverage_status"], result.contract["coverage_status"])
+        self.assertEqual(contract["merge_recommendation"], result.contract["merge_recommendation"])
+        self.assertEqual(contract["policy_violations"], result.contract["policy_violations"])
+        self.assertEqual(["Add focused assertions for cancelOrder error handling."], result.contract["recommended_tests"])
+        self.assertFalse(validate_contract(result.contract))
+
+    def test_output_schema_rejects_invalid_authoritative_fields_and_safety_boundary(self) -> None:
+        contract = build_partial_contract()
+        contract["coverage_status"] = "green"
+        contract["merge_recommendation"] = "merge_now"
+        contract["policy_violations"] = "none"
+        contract["policy_warnings"] = "none"
+        contract["safety_boundary"] = "advisory report"
+
+        errors = validate_contract(contract)
+
+        self.assertTrue(any("Invalid coverage_status" in error for error in errors))
+        self.assertTrue(any("Invalid merge_recommendation" in error for error in errors))
+        self.assertTrue(any("Invalid type for policy_violations" in error for error in errors))
+        self.assertTrue(any("Invalid type for policy_warnings" in error for error in errors))
+        self.assertTrue(any("safety_boundary" in error for error in errors))
 
     def test_patch_proposal_generated_for_partial_coverage(self) -> None:
         contract = build_partial_contract()

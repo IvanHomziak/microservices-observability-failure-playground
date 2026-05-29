@@ -2,13 +2,28 @@ from __future__ import annotations
 
 import json
 import os
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Protocol
 
-from .output_schema import render_contract_json, validate_contract
+from .output_schema import validate_contract
 from .prompt_builder import build_coverage_reasoning_prompt
 
 DEFAULT_MODEL = "gpt-4.1-mini"
+
+AUTHORITATIVE_FIELDS = (
+    "coverage_status",
+    "merge_recommendation",
+    "policy_violations",
+    "policy_warnings",
+)
+
+ADVISORY_FIELDS = (
+    "missing_test_scenarios",
+    "recommended_tests",
+    "blocking_reasons",
+    "confidence",
+)
 
 
 @dataclass(frozen=True)
@@ -50,14 +65,29 @@ class LangChainOpenAICoverageProvider:
     def refine(self, contract: dict) -> ProviderResult:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise RuntimeError("OPENAI_API_KEY is required when provider=langchain-openai")
+            raise RuntimeError("OPENAI_API_KEY is required for provider=langchain-openai")
+
+        deterministic_errors = validate_contract(contract)
+        if deterministic_errors:
+            raise ValueError("Invalid deterministic coverage contract: " + "; ".join(deterministic_errors))
 
         prompt = build_coverage_reasoning_prompt(contract)
         output_text = self._invoke(prompt)
-        refined_contract = self._parse_json_contract(output_text)
-        errors = validate_contract(refined_contract)
+        advisory_contract = self._parse_json_contract(output_text)
+        errors = validate_contract(advisory_contract)
         if errors:
             raise RuntimeError("LangChain provider returned invalid coverage contract: " + "; ".join(errors))
+
+        authority_errors = self._validate_authoritative_fields(contract, advisory_contract)
+        if authority_errors:
+            raise RuntimeError(
+                "LangChain provider attempted to modify deterministic policy fields: " + "; ".join(authority_errors)
+            )
+
+        refined_contract = self._merge_advisory_fields(contract, advisory_contract)
+        errors = validate_contract(refined_contract)
+        if errors:
+            raise RuntimeError("Merged LangChain coverage contract is invalid: " + "; ".join(errors))
 
         return ProviderResult(
             provider_name=self.name,
@@ -65,6 +95,22 @@ class LangChainOpenAICoverageProvider:
             model=self.model,
             used_external_call=True,
         )
+
+    @staticmethod
+    def _validate_authoritative_fields(deterministic_contract: dict, advisory_contract: dict) -> list[str]:
+        errors: list[str] = []
+        for field in AUTHORITATIVE_FIELDS:
+            if advisory_contract.get(field) != deterministic_contract.get(field):
+                errors.append(f"{field} must remain deterministic")
+        return errors
+
+    @staticmethod
+    def _merge_advisory_fields(deterministic_contract: dict, advisory_contract: dict) -> dict:
+        refined_contract = deepcopy(deterministic_contract)
+        for field in ADVISORY_FIELDS:
+            if field in advisory_contract:
+                refined_contract[field] = advisory_contract[field]
+        return refined_contract
 
     def _invoke(self, prompt: str) -> str:
         try:
