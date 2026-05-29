@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from .output_schema import validate_contract
@@ -25,6 +25,9 @@ ADVISORY_FIELDS = (
     "confidence",
 )
 
+LLM_FALLBACK_WARNING = "LLM advisory refinement unavailable; deterministic coverage contract was used."
+MAX_WARNING_DETAIL_CHARS = 600
+
 
 @dataclass(frozen=True)
 class ProviderResult:
@@ -32,6 +35,7 @@ class ProviderResult:
     contract: dict
     model: str | None
     used_external_call: bool
+    warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
 class CoverageReasoningProvider(Protocol):
@@ -72,29 +76,49 @@ class LangChainOpenAICoverageProvider:
             raise ValueError("Invalid deterministic coverage contract: " + "; ".join(deterministic_errors))
 
         prompt = build_coverage_reasoning_prompt(contract)
-        output_text = self._invoke(prompt)
-        advisory_contract = self._parse_json_contract(output_text)
-        errors = validate_contract(advisory_contract)
-        if errors:
-            raise RuntimeError("LangChain provider returned invalid coverage contract: " + "; ".join(errors))
+        try:
+            output_text = self._invoke(prompt)
+            advisory_contract = self._parse_json_contract(output_text)
+            errors = validate_contract(advisory_contract)
+            if errors:
+                return self._fallback_result(contract, "Invalid LLM coverage contract: " + "; ".join(errors))
 
-        authority_errors = self._validate_authoritative_fields(contract, advisory_contract)
-        if authority_errors:
-            raise RuntimeError(
-                "LangChain provider attempted to modify deterministic policy fields: " + "; ".join(authority_errors)
+            authority_errors = self._validate_authoritative_fields(contract, advisory_contract)
+            if authority_errors:
+                return self._fallback_result(
+                    contract,
+                    "LLM attempted to modify deterministic policy fields: " + "; ".join(authority_errors),
+                )
+
+            refined_contract = self._merge_advisory_fields(contract, advisory_contract)
+            errors = validate_contract(refined_contract)
+            if errors:
+                return self._fallback_result(contract, "Merged LLM coverage contract was invalid: " + "; ".join(errors))
+
+            return ProviderResult(
+                provider_name=self.name,
+                contract=refined_contract,
+                model=self.model,
+                used_external_call=True,
             )
+        except Exception as exc:
+            return self._fallback_result(contract, f"{type(exc).__name__}: {exc}")
 
-        refined_contract = self._merge_advisory_fields(contract, advisory_contract)
-        errors = validate_contract(refined_contract)
-        if errors:
-            raise RuntimeError("Merged LangChain coverage contract is invalid: " + "; ".join(errors))
-
+    def _fallback_result(self, deterministic_contract: dict, reason: str) -> ProviderResult:
         return ProviderResult(
             provider_name=self.name,
-            contract=refined_contract,
+            contract=deepcopy(deterministic_contract),
             model=self.model,
             used_external_call=True,
+            warnings=(LLM_FALLBACK_WARNING, self._truncate_warning_detail(reason)),
         )
+
+    @staticmethod
+    def _truncate_warning_detail(reason: str) -> str:
+        normalized = " ".join(reason.split())
+        if len(normalized) <= MAX_WARNING_DETAIL_CHARS:
+            return normalized
+        return normalized[:MAX_WARNING_DETAIL_CHARS].rstrip() + "..."
 
     @staticmethod
     def _validate_authoritative_fields(deterministic_contract: dict, advisory_contract: dict) -> list[str]:
