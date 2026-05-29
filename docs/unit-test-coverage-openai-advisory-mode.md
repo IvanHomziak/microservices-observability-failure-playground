@@ -98,6 +98,7 @@ Recommended inputs for OpenAI advisory mode:
 | `base_ref` | `origin/main` |
 | `head_ref` | `HEAD` or a branch/ref |
 | `run_tests` | `true` or `false` |
+| `policy_file` | `coverage-policy.yml` |
 | `provider` | `langchain-openai` |
 | `model` | `gpt-4.1-mini` |
 
@@ -117,6 +118,20 @@ provider: deterministic
 
 Deterministic mode does not require `OPENAI_API_KEY`.
 
+## Manual policy selection
+
+Manual coverage workflows support explicit deterministic policy selection before the optional OpenAI advisory layer runs:
+
+```text
+Advisory run:
+policy_file: coverage-policy.yml
+
+Strict PR-like run:
+policy_file: coverage-policy-pr.yml
+```
+
+Use `coverage-policy.yml` for exploratory advisory analysis where missing JaCoCo, missing Surefire, or unknown changed-class coverage may be rendered as warnings. Use `coverage-policy-pr.yml` when manually validating PR-gate behavior; strict mode turns those serious evidence gaps into policy violations and can fail deterministic enforcement. The automatic `Unit Test Coverage PR Agent` already uses `coverage-policy-pr.yml`, remains deterministic-only, and must not receive OpenAI credentials.
+
 ## How to run PR Comment workflow with OpenAI
 
 Use this path when you want a PR comment created or updated from validated coverage artifacts, with optional OpenAI-enhanced wording:
@@ -131,6 +146,7 @@ Recommended inputs for OpenAI-enhanced PR comments:
 |---|---|
 | `pr_number` | `<PR number>` |
 | `run_tests` | `true` or `false` |
+| `policy_file` | `coverage-policy.yml` for advisory comments or `coverage-policy-pr.yml` for strict PR-like evidence |
 | `use_llm_summary` | `true` |
 | `model` | `gpt-4.1-mini` |
 

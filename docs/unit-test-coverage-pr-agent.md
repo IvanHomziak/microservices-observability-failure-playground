@@ -82,7 +82,17 @@ The PR workflow uses:
 coverage-policy-pr.yml
 ```
 
-This policy is stricter than the default advisory policy.
+This policy is stricter than the default advisory policy. Manual coverage workflows can now select either policy explicitly with the `policy_file` input:
+
+```text
+Advisory run:
+policy_file: coverage-policy.yml
+
+Strict PR-like run:
+policy_file: coverage-policy-pr.yml
+```
+
+The advisory policy reports missing or unknown evidence as warnings for exploratory analysis. The strict PR-like policy reports serious evidence gaps as policy violations and can fail enforcement. The automatic PR Agent already uses `coverage-policy-pr.yml`, so it remains strict without requiring a manual input.
 
 It fails on:
 

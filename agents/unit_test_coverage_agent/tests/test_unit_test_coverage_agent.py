@@ -450,6 +450,42 @@ fail_on_test_failures: true
             self.assertTrue(policy.fail_on_maven_verification_failure)
             self.assertTrue(policy.fail_on_test_failures)
 
+    def test_repository_advisory_policy_keeps_strict_failure_flags_false(self) -> None:
+        repository_root = Path(__file__).resolve().parents[3]
+
+        policy = load_policy(repository_root, repository_root / "coverage-policy.yml")
+
+        self.assertFalse(policy.fail_on_unknown_coverage)
+        self.assertFalse(policy.fail_on_missing_surefire_evidence)
+        self.assertFalse(policy.fail_on_missing_jacoco_evidence)
+        self.assertFalse(policy.fail_on_maven_verification_failure)
+        self.assertFalse(policy.require_related_test_change_when_production_code_changes)
+
+    def test_repository_strict_pr_policy_sets_strict_failure_flags_true(self) -> None:
+        repository_root = Path(__file__).resolve().parents[3]
+
+        policy = load_policy(repository_root, repository_root / "coverage-policy-pr.yml")
+
+        self.assertTrue(policy.fail_on_unknown_coverage)
+        self.assertTrue(policy.fail_on_missing_surefire_evidence)
+        self.assertTrue(policy.fail_on_missing_jacoco_evidence)
+        self.assertTrue(policy.fail_on_maven_verification_failure)
+        self.assertTrue(policy.require_related_test_change_when_production_code_changes)
+
+    def test_policy_loader_fails_on_unknown_policy_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            policy_path = root / "coverage-policy.yml"
+            write(
+                policy_path,
+                """minimum_line_coverage_for_changed_classes: 80
+unknown_policy_key: true
+""",
+            )
+
+            with self.assertRaisesRegex(ValueError, "Unknown coverage policy keys: unknown_policy_key"):
+                load_policy(root)
+
     def test_policy_loader_fails_when_explicit_policy_path_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

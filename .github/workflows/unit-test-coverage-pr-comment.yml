@@ -12,6 +12,14 @@ on:
         required: true
         default: false
         type: boolean
+      policy_file:
+        description: "Coverage policy file to use"
+        required: true
+        default: "coverage-policy.yml"
+        type: choice
+        options:
+          - coverage-policy.yml
+          - coverage-policy-pr.yml
       use_llm_summary:
         description: "Use OpenAI to enhance advisory PR comment"
         required: true
@@ -131,25 +139,34 @@ jobs:
 
       - name: Generate deterministic coverage artifacts with trusted agent code
         shell: bash
+        working-directory: agent-repo
+        env:
+          POLICY_FILE: ${{ inputs.policy_file }}
         run: |
           set -euo pipefail
 
-          PYTHONPATH="agent-repo/agents/unit_test_coverage_agent/src" \
+          if [ ! -f "${POLICY_FILE}" ]; then
+            echo "Coverage policy file does not exist: ${POLICY_FILE}"
+            exit 1
+          fi
+
+          PYTHONPATH="agents/unit_test_coverage_agent/src" \
             python -m unit_test_coverage_agent.main \
-              --repository-root pr-worktree \
+              --repository-root ../pr-worktree \
               --base-ref "$BASE_REF" \
               --head-ref "$HEAD_REF" \
+              --policy "${POLICY_FILE}" \
               --provider deterministic \
-              --output coverage-agent/output/unit-test-coverage-report.md \
-              --json-output coverage-agent/output/unit-test-coverage-report.json \
-              --prompt-output coverage-agent/output/coverage-reasoning-prompt.md \
-              --patch-proposal-output coverage-agent/output/unit-test-coverage-patch-proposal.md \
-              --patch-proposal-json-output coverage-agent/output/unit-test-coverage-patch-proposal.json \
-              --test-execution-failures-file coverage-agent/raw/maven-failed-services.txt
+              --output ../coverage-agent/output/unit-test-coverage-report.md \
+              --json-output ../coverage-agent/output/unit-test-coverage-report.json \
+              --prompt-output ../coverage-agent/output/coverage-reasoning-prompt.md \
+              --patch-proposal-output ../coverage-agent/output/unit-test-coverage-patch-proposal.md \
+              --patch-proposal-json-output ../coverage-agent/output/unit-test-coverage-patch-proposal.json \
+              --test-execution-failures-file ../coverage-agent/raw/maven-failed-services.txt
 
-          git -C pr-worktree diff --name-only "$BASE_REF...$HEAD_REF" > coverage-agent/raw/changed-files.txt
-          find pr-worktree -path "*/target/surefire-reports/TEST-*.xml" -type f -print > coverage-agent/raw/surefire-files.txt || true
-          find pr-worktree -path "*/target/site/jacoco/jacoco.xml" -type f -print > coverage-agent/raw/jacoco-files.txt || true
+          git -C ../pr-worktree diff --name-only "$BASE_REF...$HEAD_REF" > ../coverage-agent/raw/changed-files.txt
+          find ../pr-worktree -path "*/target/surefire-reports/TEST-*.xml" -type f -print > ../coverage-agent/raw/surefire-files.txt || true
+          find ../pr-worktree -path "*/target/site/jacoco/jacoco.xml" -type f -print > ../coverage-agent/raw/jacoco-files.txt || true
 
       - name: Upload deterministic coverage artifacts
         uses: actions/upload-artifact@v4

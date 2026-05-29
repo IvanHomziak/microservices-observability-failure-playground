@@ -18,6 +18,14 @@ on:
         required: true
         default: false
         type: boolean
+      policy_file:
+        description: "Coverage policy file to use"
+        required: true
+        default: "coverage-policy.yml"
+        type: choice
+        options:
+          - coverage-policy.yml
+          - coverage-policy-pr.yml
       provider:
         description: "Coverage reasoning provider"
         required: true
@@ -118,9 +126,15 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ inputs.model }}
+          POLICY_FILE: ${{ inputs.policy_file }}
         run: |
           set -euo pipefail
           mkdir -p coverage-agent/output coverage-agent/raw
+
+          if [ ! -f "${POLICY_FILE}" ]; then
+            echo "Coverage policy file does not exist: ${POLICY_FILE}"
+            exit 1
+          fi
 
           if [ "${{ inputs.provider }}" = "langchain-openai" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
             echo "OPENAI_API_KEY repository secret is required for provider=langchain-openai"
@@ -132,6 +146,7 @@ jobs:
               --repository-root . \
               --base-ref "${{ inputs.base_ref }}" \
               --head-ref "${{ inputs.head_ref }}" \
+              --policy "${POLICY_FILE}" \
               --provider "${{ inputs.provider }}" \
               --output coverage-agent/output/unit-test-coverage-report.md \
               --json-output coverage-agent/output/unit-test-coverage-report.json \
