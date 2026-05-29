@@ -12,6 +12,7 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE_ROOT / "src"))
 
 from unit_test_coverage_agent.affected_services import detect_affected_services
+from unit_test_coverage_agent import detect_affected_services_cli
 from unit_test_coverage_agent.assessment import assess_coverage
 from unit_test_coverage_agent.enforce_policy import enforce_policy
 from unit_test_coverage_agent.git_diff import classify_file
@@ -148,6 +149,51 @@ class TestUnitTestCoverageAgent(unittest.TestCase):
                 ("api-gateway", "audit-service", "inventory-service", "notification-service", "orders-service", "payments-service"),
                 detect_affected_services(git),
             )
+
+
+    def test_detect_affected_services_deleted_production_file_returns_service(self) -> None:
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=("orders-service/src/main/java/com/example/DeletedFeature.java",),
+            changed_files=(
+                classify_file(
+                    "orders-service/src/main/java/com/example/DeletedFeature.java",
+                    change_status="deleted",
+                ),
+            ),
+        )
+        self.assertEqual(("orders-service",), detect_affected_services(git))
+
+    def test_detect_affected_services_cli_writes_changed_and_affected_outputs(self) -> None:
+        git = GitDiffEvidence(
+            base_ref="origin/main",
+            head_ref="HEAD",
+            raw_changed_files=("orders-service/src/main/java/com/example/OrderService.java",),
+            changed_files=(classify_file("orders-service/src/main/java/com/example/OrderService.java"),),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            changed_output = root / "coverage-agent" / "raw" / "changed-files.txt"
+            affected_output = root / "coverage-agent" / "raw" / "affected-services.txt"
+            argv = [
+                "detect_affected_services_cli",
+                "--repository-root",
+                str(root),
+                "--base-ref",
+                "origin/main",
+                "--head-ref",
+                "HEAD",
+                "--changed-files-output",
+                str(changed_output),
+                "--affected-services-output",
+                str(affected_output),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(detect_affected_services_cli, "load_changed_files", return_value=git):
+                self.assertEqual(0, detect_affected_services_cli.main())
+
+            self.assertEqual("orders-service/src/main/java/com/example/OrderService.java\n", changed_output.read_text(encoding="utf-8"))
+            self.assertEqual("orders-service\n", affected_output.read_text(encoding="utf-8"))
 
     def test_load_surefire_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

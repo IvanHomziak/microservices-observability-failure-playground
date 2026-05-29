@@ -15,8 +15,8 @@ The test coverage agent has two layers.
 The deterministic layer is the source of truth for coverage evidence and pass/fail behavior. It uses repository-local evidence and policy logic, including:
 
 - Git diff;
-- affected service detection;
-- Maven `verify`;
+- affected service detection written to `coverage-agent/raw/affected-services.txt`;
+- Maven `verify` for affected services only;
 - Maven failed-service evidence from `coverage-agent/raw/maven-failed-services.txt`;
 - Surefire XML;
 - JaCoCo XML;
@@ -24,7 +24,7 @@ The deterministic layer is the source of truth for coverage evidence and pass/fa
 - `enforce_policy`;
 - green/red decisions.
 
-This layer decides `coverage_status`, `merge_recommendation`, `policy_violations`, and policy enforcement results. It also passes `--test-execution-failures-file coverage-agent/raw/maven-failed-services.txt` into report generation so collected Maven failures appear in `test_execution_failures` and the Markdown `Test execution failures` section. Maven failure evidence is advisory or blocking depending on the selected deterministic policy. It is the only layer that may be used for branch protection or required PR checks.
+This layer decides `coverage_status`, `merge_recommendation`, `policy_violations`, and policy enforcement results. Manual coverage workflows first write `coverage-agent/raw/changed-files.txt` and `coverage-agent/raw/affected-services.txt`; when no affected services are detected, Maven verification is skipped and the deterministic report can remain `not_applicable` for docs-only changes. It also passes `--test-execution-failures-file coverage-agent/raw/maven-failed-services.txt` into report generation so collected Maven failures appear in `test_execution_failures` and the Markdown `Test execution failures` section. Maven failure evidence is advisory or blocking depending on the selected deterministic policy. It is the only layer that may be used for branch protection or required PR checks.
 
 ### B. Optional OpenAI advisory layer
 
