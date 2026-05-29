@@ -125,7 +125,7 @@ To run the manual workflow with OpenAI advisory explanations:
    - `run_tests`: `true` to run Maven verification first, or `false` to analyze existing evidence if present.
    - `policy_file`: `coverage-policy.yml` for advisory analysis, or `coverage-policy-pr.yml` for strict PR-like validation.
 
-Manual coverage workflows install Java 21 before Maven verification. If Maven fails after Java setup, it should represent a real build or test issue rather than missing JDK setup. Failed Maven services are captured as newline-delimited evidence in `coverage-agent/raw/maven-failed-services.txt` and passed to the report generator with `--test-execution-failures-file coverage-agent/raw/maven-failed-services.txt`. The generated JSON surfaces those services in `test_execution_failures`, and the Markdown report renders them under `## Test execution failures`.
+Manual coverage workflows install Java 21 before Maven verification. Before Maven runs, they detect changed files and affected services from the selected base/head refs and write `coverage-agent/raw/changed-files.txt` and `coverage-agent/raw/affected-services.txt`. When `run_tests` is enabled, Maven `verify` runs only for services listed in `affected-services.txt`; docs-only diffs with no affected services skip Maven with a clear message and still generate a report. If Maven fails after Java setup, it should represent a real build or test issue rather than missing JDK setup. Failed Maven services are captured as newline-delimited evidence in `coverage-agent/raw/maven-failed-services.txt` and passed to the report generator with `--test-execution-failures-file coverage-agent/raw/maven-failed-services.txt`. The generated JSON surfaces those services in `test_execution_failures`, and the Markdown report renders them under `## Test execution failures`.
 
 Deterministic mode remains the default, does not require `OPENAI_API_KEY`, and performs no external model call. `langchain-openai` requires `OPENAI_API_KEY`, uses `OPENAI_MODEL` from the workflow `model` input, and is advisory only. Pass/fail remains deterministic when enforcement is used; OpenAI may refine explanations and recommendations but must not control required PR gate decisions.
 
@@ -171,7 +171,9 @@ The policy is advisory by default. It influences the generated report, PR commen
 The agent reads:
 
 ```text
-git diff --name-only <base_ref>...<head_ref>
+git diff --name-status --find-renames --find-copies <base_ref>...<head_ref>
+coverage-agent/raw/changed-files.txt
+coverage-agent/raw/affected-services.txt
 */target/surefire-reports/TEST-*.xml
 */target/site/jacoco/jacoco.xml
 coverage-policy.yml
